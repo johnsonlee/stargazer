@@ -1,5 +1,5 @@
 <template>
-    <div>
+    <div class="page-home">
         <div class="topbar">
             <input type="text" placeholder="user/repository" v-model:value="repository" />
             <input type="submit" value="Submit" v-on:click="loadStarTrending" />
@@ -51,6 +51,11 @@ export default {
 </script>
 
 <style scoped>
+.page-home {
+    width: 100%;
+    height: 100%;
+}
+
 .topbar {
     height: 60px;
     line-height: 60px;
