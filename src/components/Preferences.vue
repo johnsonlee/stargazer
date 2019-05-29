@@ -32,6 +32,10 @@ export default {
     padding: 12px;
     text-align: center;
     background: rgba(54, 53, 52, 0.9);
+    top: 0px;
+    left: 0px;
+    right: 0px;
+    bottom: 0px;
     z-index: 10000;
 }
 </style>
