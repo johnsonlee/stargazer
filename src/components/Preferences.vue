@@ -31,7 +31,7 @@ export default {
     height: 100%;
     padding: 12px;
     text-align: center;
-    background: rgba(0, 0, 0, 0.7);
+    background: rgba(54, 53, 52, 0.9);
     z-index: 10000;
 }
 

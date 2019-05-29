@@ -4,8 +4,8 @@
             <input type="text" placeholder="user/repository" v-model:value="repository" />
             <input type="submit" value="Submit" v-on:click="loadStarTrending" />
         </div>
+        <Preferences v-if="isTokenNotFound()" />
         <div class="content">
-            <Preferences v-if="isTokenNotFound()" />
             <StarTrendingChart :height="chartHeight" />
         </div>
     </div>
