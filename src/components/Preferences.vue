@@ -24,7 +24,7 @@ export default {
 }
 </script>
 
-<style scoped>
+<style>
 .preferences {
     position: absolute;
     width: 100%;
@@ -34,7 +34,9 @@ export default {
     background: rgba(54, 53, 52, 0.9);
     z-index: 10000;
 }
+</style>
 
+<style scoped>
 .preferences input[type=text] {
     color: rgb(15, 46, 71);
     border-radius: 3px;
