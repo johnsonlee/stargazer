@@ -51,11 +51,6 @@ export default {
 </script>
 
 <style scoped>
-.page-home {
-    width: 100%;
-    height: 100%;
-}
-
 .topbar {
     height: 60px;
     line-height: 60px;
@@ -69,6 +64,10 @@ export default {
 </style>
 
 <style>
+.page-home {
+    width: 100%;
+    height: 100%;
+}
 
 input {
     outline: none;
