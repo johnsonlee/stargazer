@@ -28,7 +28,7 @@ export default {
     name: 'StarTrendingChart',
     props: ['height'],
     data: () => ({
-        empty: false,
+        empty: true,
         loading: false,
         dataset: {
             columns: [],
