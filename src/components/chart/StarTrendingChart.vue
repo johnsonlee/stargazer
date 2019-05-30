@@ -1,11 +1,17 @@
 <template>
-    <ve-line :data='dataset' :height='height' :loading='loading' />
+    <ve-line
+        :data='dataset'
+        :height='height'
+        :data-empty='empty'
+        :loading='loading'
+        :toolbox='toolbox' />
 </template>
 
 <script>
 import Vue from 'vue'
 import _ from 'lodash'
 import moment from 'moment'
+import 'v-charts/lib/style.css'
 import v3 from '../../github/api/v3'
 
 function rangeInDate(start, end) {
@@ -22,23 +28,29 @@ export default {
     name: 'StarTrendingChart',
     props: ['height'],
     data: () => ({
+        empty: false,
         loading: false,
         dataset: {
-            columns: [ 'date', 'star' ],
-            rows: [{
-                date: moment().format('MM-DD'),
-                star: 0,
-            }],
+            columns: [],
+            rows: [],
+        },
+        toolbox: {
+            feature: {
+                magicType: {
+                    type: ['line', 'bar'],
+                },
+                saveAsImage: {},
+            },
         },
     }),
     created() {
     },
     mounted() {
-        this.reload();
+        this.reload(this.$route.path.replace(/^\//, ''));
     },
     methods: {
-        async reload() {
-            const repo = await v3.fetchRepository(this.$route.path, localStorage.token || '')
+        async reload(id) {
+            const repo = await v3.fetchRepository(id || this.$route.path.replace(/^\//, ''), localStorage.token || '')
             if (!(repo && repo.created_at)) {
                 return;
             }
@@ -64,24 +76,16 @@ export default {
                     });
                     return acc;
                 }, []), it => ({
-                    date: it.date.substring(5, 10),
+                    date: moment(it.date, 'YYYY-MM-DD').format('MM/DD/YYYY'),
                     star: it.star,
                 })),
             };
-            console.log(this.dataset);
+            this.empty = this.dataset.length > 0;
+            this.loading = false;
+            _.forEach(this.dataset.rows, it => {
+                console.log(JSON.stringify(it));
+            });
         },
     },
 }
 </script>
-
-<style>
-.v-charts-component-loading {
-    width: 100%;
-    height: 100%;
-    position: absolute;
-    top: 0px;
-    bottom: 0px;
-    left: 0px;
-    right: 0px;
-}
-</style>

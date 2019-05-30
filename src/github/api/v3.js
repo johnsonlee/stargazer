@@ -4,6 +4,15 @@ const API = 'https://api.github.com'
 
 export default {
 
+    async isValidToken(token) {
+        return fetch('https://api.github.com/', {
+            method: 'HEAD',
+            headers: new Headers({
+                'Authorization': `token ${token}`,
+            }),
+        }).then(resp => resp.status);
+    },
+
     async fetchRepository(path, token) {
         const repo = path.replace(/^\//g, '');
         if (-1 === repo.indexOf('/')) {
@@ -31,7 +40,7 @@ export default {
         const links = await fetch(api, {
             method: 'HEAD'
         }).then(resp => resp.headers.get('Link'));
-        const n = parseInt(_.last(_.last(links.split(/\s*,\s*/)).match(/page=\d+/)[0].split('=')));
+        const n = links ? parseInt(_.last(_.last(links.split(/\s*,\s*/)).match(/page=\d+/)[0].split('='))) : 1;
 
         return Promise.all(_.map(_.range(1, n + 1), i => {
             return fetch(`${api}&page=${i}`, {

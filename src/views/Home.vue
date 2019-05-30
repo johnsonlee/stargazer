@@ -1,101 +1,36 @@
 <template>
-    <div class="page-home">
-        <div class="topbar">
-            <input type="text" placeholder="user/repository" v-model:value="repository" />
-            <input type="submit" value="Submit" v-on:click="loadStarTrending" />
-        </div>
-        <Preferences v-if="isTokenNotFound()" />
-        <div class="content">
-            <StarTrendingChart :height="chartHeight" />
-        </div>
+    <div>
+        <RepositoryForm :repository='repository' v-on:repositorychanged='onRepositoryChanged' />
+        <StarTrendingChart :height='starTrendingChartHeight' ref='starTrendingChart' />
     </div>
 </template>
 
 <script>
 import Vue from 'vue'
 import Preferences from '../components/Preferences.vue'
+import RepositoryForm from '../components/RepositoryForm.vue'
 import StarTrendingChart from '../components/chart/StarTrendingChart.vue'
 
 export default {
     name: 'Home',
     components: {
-        StarTrendingChart,
         Preferences,
+        RepositoryForm,
+        StarTrendingChart,
     },
     props: [ 'route' ],
     data: () => ({
-        chartHeight: '',
         repository: '',
+        starTrendingChartHeight: '0px',
     }),
     created() {
-        this.chartHeight = `${window.innerHeight - 60}px`;
+        this['starTrendingChartHeight'] = `${window.innerHeight - 60}px`;
         this.repository = this.route.path.replace(/^\//, '');
     },
     methods: {
-        loadStarTrending() {
-            const repo = this.repository.replace(/^\//, '');
-            if (!repo) {
-                return;
-            }
-            console.log(`Loading star trending of repo ${repo}`);
-            this.$router.push(`/${repo}`);
+        onRepositoryChanged(repo) {
+            this.$refs.starTrendingChart.reload(repo);
         },
-        isTokenNotFound() {
-            const token = !!!localStorage.token;
-            return token;
-        },
-    },
-    watch: {
     },
 }
 </script>
-
-<style scoped>
-.topbar {
-    height: 60px;
-    line-height: 60px;
-    background: rgb(54, 53, 52);
-    text-align: center;
-}
-
-.topbar input[type=text] {
-    width: 300px;
-}
-</style>
-
-<style>
-.page-home {
-    width: 100%;
-    height: 100%;
-}
-
-input {
-    outline: none;
-    border: 0px;
-    padding: 3px 12px;
-    line-height: 26px;
-}
-
-input[type=submit] {
-    border-radius: 3px;
-    background-color: #28a745;
-    background-image: linear-gradient(-180deg,#34d058,#28a745 90%);
-    color: #fff;
-    line-height: 26px;
-}
-
-input[type=submit]:last-child {
-    margin-left: 8px;
-}
-
-.content {
-    height: -webkit-calc(100% - 60px);
-    height: -moz-calc(100% - 60px);
-    height: calc(100% - 60px);
-    top: 60px;
-    left: 0px;
-    right: 0px;
-    bottom: 0px;
-    position: absolute;
-}
-</style>
