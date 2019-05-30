@@ -9,7 +9,7 @@
 </template>
 
 <script>
-import '@/assets/fontello/css/help.css'
+import '@/assets/icons/css/icons.css'
 
 export default {
     name: 'Preferences',
@@ -58,7 +58,6 @@ input {
 
 input[type=text] {
     color: rgb(15, 46, 71);
-    width: 300px;
 }
 
 input[type=submit] {
@@ -68,19 +67,37 @@ input[type=submit] {
     background-image: linear-gradient(-180deg,#34d058,#28a745 90%);
 }
 
-input:first-child {
-    margin-right: 8px;
-}
-
-input:last-child {
-    margin-left: 4px;
-}
-
 a.link-gen-token {
     line-height: 26px;
     margin-left: 8px;
 }
+
 .icon-help-circled {
     color: white;
+}
+
+@media (max-width: 320px) {
+    input[type=text] {
+        width: 280px;
+    }
+}
+
+@media (min-width: 321px) and (max-width: 480px) {
+    input[type=text] {
+        width: 300px;
+    }
+}
+
+@media (min-width: 481px) and (max-width: 767px) {
+    input[type=text] {
+        width: 300px;
+    }
+}
+
+@media (min-width: 600px) {
+    input[type=text] {
+        width: 300px;
+        margin-right: 8px;
+    }
 }
 </style>
