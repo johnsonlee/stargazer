@@ -20,7 +20,7 @@ export default {
         }
 
         console.log(`Fetching the properties of repository \`${repo}\``);
-        return fetch(`${API}/repos/${repo}?access_token=${token}`, {
+        return fetch(`${API}/repos/${repo}`, {
             method: 'GET',
             headers: new Headers({
                 'Accept': 'application/vnd.github.v3.star+json',
@@ -36,9 +36,12 @@ export default {
         }
 
         console.log(`Fetching the stargazers of repository \`${repo}\``);
-        const api = `${API}/repos/${repo}/stargazers?access_token=${token}`;
+        const api = `${API}/repos/${repo}/stargazers`;
         const links = await fetch(api, {
-            method: 'HEAD'
+            method: 'HEAD',
+            headers: new Headers({
+                'Authorization': `token ${token}`,
+            })
         }).then(resp => resp.headers.get('Link'));
         const n = links ? parseInt(_.last(_.last(links.split(/\s*,\s*/)).match(/page=\d+/)[0].split('='))) : 1;
 
