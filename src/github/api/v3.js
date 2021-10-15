@@ -46,7 +46,7 @@ export default {
         const n = links ? parseInt(_.last(_.last(links.split(/\s*,\s*/)).match(/page=\d+/)[0].split('='))) : 1;
 
         return Promise.all(_.map(_.range(1, n + 1), i => {
-            return fetch(`${api}&page=${i}`, {
+            return fetch(`${api}?page=${i}`, {
                 method: 'GET',
                 headers: new Headers({
                    'Accept': 'application/vnd.github.v3.star+json',
