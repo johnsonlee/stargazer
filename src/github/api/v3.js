@@ -41,14 +41,17 @@ export async function fetchRepository(repo, token) {
   return (await request(`${API}/repos/${repo}`, token)).json()
 }
 
+export async function fetchUser(token) {
+  return (await request(`${API}/user`, token)).json()
+}
+
 /**
- * Fetches the `starred_at` timestamp of every stargazer.
- * `onProgress(done, total)` is called as pages arrive.
+ * Fetches every page of a paginated endpoint with bounded concurrency.
+ * `url(page)` builds the URL for a 1-based page number.
  */
-export async function fetchStargazers(repo, token, onProgress = () => {}) {
-  const url = (page) => `${API}/repos/${repo}/stargazers?per_page=${PER_PAGE}&page=${page}`
-  const first = await request(url(1), token, STAR_JSON)
-  const total = Math.min(lastPage(first.headers.get('Link')), MAX_PAGES)
+async function fetchAllPages(url, token, accept, onProgress = () => {}, maxPages = Infinity) {
+  const first = await request(url(1), token, accept)
+  const total = Math.min(lastPage(first.headers.get('Link')), maxPages)
   const pages = new Array(total)
   pages[0] = await first.json()
 
@@ -59,11 +62,27 @@ export async function fetchStargazers(repo, token, onProgress = () => {}) {
   async function worker() {
     while (next <= total) {
       const page = next++
-      pages[page - 1] = await (await request(url(page), token, STAR_JSON)).json()
+      pages[page - 1] = await (await request(url(page), token, accept)).json()
       onProgress(++done, total)
     }
   }
 
   await Promise.all(Array.from({ length: Math.min(CONCURRENCY, total - 1) }, worker))
-  return pages.flat().map((it) => it.starred_at)
+  return pages.flat()
+}
+
+/** Every repository the token can see: owned, collaborator and organization member. */
+export async function fetchUserRepos(token) {
+  const url = (page) => `${API}/user/repos?per_page=${PER_PAGE}&page=${page}&sort=pushed&affiliation=owner,collaborator,organization_member`
+  return fetchAllPages(url, token)
+}
+
+/**
+ * Fetches the `starred_at` timestamp of every stargazer.
+ * `onProgress(done, total)` is called as pages arrive.
+ */
+export async function fetchStargazers(repo, token, onProgress) {
+  const url = (page) => `${API}/repos/${repo}/stargazers?per_page=${PER_PAGE}&page=${page}`
+  const stargazers = await fetchAllPages(url, token, STAR_JSON, onProgress, MAX_PAGES)
+  return stargazers.map((it) => it.starred_at)
 }

@@ -6,11 +6,11 @@
 import { onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { init, use, graphic } from 'echarts/core'
 import { BarChart, LineChart } from 'echarts/charts'
-import { DataZoomComponent, GridComponent, LegendComponent, TooltipComponent } from 'echarts/components'
+import { DataZoomComponent, GridComponent, TitleComponent, TooltipComponent } from 'echarts/components'
 import { CanvasRenderer } from 'echarts/renderers'
 import { formatAxis, formatCompact, formatNumber, formatPeriod } from '../../lib/series'
 
-use([LineChart, BarChart, GridComponent, TooltipComponent, DataZoomComponent, LegendComponent, CanvasRenderer])
+use([LineChart, BarChart, GridComponent, TitleComponent, TooltipComponent, DataZoomComponent, CanvasRenderer])
 
 const props = defineProps({
   points: { type: Array, required: true },
@@ -26,141 +26,162 @@ function tokens() {
   const css = getComputedStyle(document.documentElement)
   const get = (name) => css.getPropertyValue(name).trim()
   return {
-    bg: get('--surface'),
+    surface: get('--surface'),
     text: get('--text'),
+    text2: get('--text-2'),
     muted: get('--muted'),
     border: get('--border-strong'),
     grid: get('--grid'),
+    axis: get('--axis'),
     accent: get('--accent'),
     accentSoft: get('--accent-soft'),
-    bar: get('--bar'),
     font: get('--font'),
   }
 }
 
+const withAlpha = (rgba, alpha) => rgba.replace(/[\d.]+\)$/, `${alpha})`)
+
+// Two panels share one time axis instead of a dual-axis chart:
+// cumulative total on top, new stars per period underneath.
 function buildOption() {
   const t = tokens()
   const g = props.granularity
-  const narrow = el.value.clientWidth < 560
-  const dot = (color) => `<span style="display:inline-block;width:8px;height:8px;border-radius:2px;margin-right:8px;background:${color}"></span>`
+  const last = props.points.length - 1
+  const labels = props.points.map((p) => formatAxis(p.start, g))
+  const height = el.value.clientHeight
+  const barsHeight = Math.round(height * 0.28)
+  const sliderHeight = 20
+  const gap = 44
+  const top = 28
+  const totalHeight = height - top - gap - barsHeight - 38 - sliderHeight - 14
+
+  const axisCommon = {
+    type: 'category',
+    data: labels,
+    boundaryGap: true,
+    axisTick: { show: false },
+    axisLine: { lineStyle: { color: t.axis } },
+  }
+  const valueAxis = (splitNumber) => ({
+    type: 'value',
+    splitNumber,
+    axisLabel: { color: t.muted, fontSize: 11, formatter: formatCompact },
+    splitLine: { lineStyle: { color: t.grid, width: 1 } },
+  })
+  const title = (text, topPx) => ({
+    text,
+    left: 0,
+    top: topPx,
+    textStyle: { color: t.text2, fontSize: 12, fontWeight: 600, fontFamily: t.font },
+  })
 
   return {
-    animationDuration: 500,
-    animationDurationUpdate: 350,
+    animationDuration: 450,
+    animationDurationUpdate: 300,
     textStyle: { fontFamily: t.font },
-    grid: { left: 8, right: 8, top: 44, bottom: 64, containLabel: true },
-    legend: {
-      top: 0,
-      left: 0,
-      itemWidth: 10,
-      itemHeight: 10,
-      itemGap: 18,
-      icon: 'roundRect',
-      textStyle: { color: t.muted, fontSize: 12 },
-      data: ['Total stars', `New per ${g}`],
-    },
+    title: [
+      title('Total stars', 0),
+      title(`New stars per ${g}`, top + totalHeight + gap - 22),
+    ],
+    axisPointer: { link: [{ xAxisIndex: 'all' }] },
+    grid: [
+      { left: 0, right: 56, top, height: totalHeight, containLabel: true },
+      { left: 0, right: 56, top: top + totalHeight + gap, height: barsHeight, containLabel: true },
+    ],
     tooltip: {
       trigger: 'axis',
       axisPointer: { type: 'line', lineStyle: { color: t.border, width: 1 } },
-      backgroundColor: t.bg,
+      backgroundColor: t.surface,
       borderColor: t.border,
       borderWidth: 1,
       padding: [10, 12],
-      extraCssText: 'border-radius:10px;box-shadow:0 10px 30px -10px rgba(0,0,0,.35);',
+      extraCssText: 'border-radius:10px;box-shadow:0 8px 24px -8px rgba(0,0,0,.25);',
       textStyle: { color: t.text, fontSize: 13 },
       formatter(params) {
         const p = props.points[params[0].dataIndex]
-        return `<div style="font-weight:600;margin-bottom:6px">${formatPeriod(p.start, g)}</div>`
-          + `<div style="display:flex;align-items:center;justify-content:space-between;gap:24px">`
-          + `<span>${dot(t.accent)}Total</span><b>${formatNumber(p.total)}</b></div>`
-          + `<div style="display:flex;align-items:center;justify-content:space-between;gap:24px;color:${t.muted}">`
-          + `<span>${dot(t.bar)}New</span><span>+${formatNumber(p.added)}</span></div>`
+        const row = (label, value) => `<div style="display:flex;justify-content:space-between;gap:28px"><span style="color:${t.muted}">${label}</span><span style="font-weight:600">${value}</span></div>`
+        const current = params[0].dataIndex === last ? ` <span style="color:${t.muted};font-weight:400">· so far</span>` : ''
+        return `<div style="font-weight:600;margin-bottom:6px">${formatPeriod(p.start, g)}${current}</div>`
+          + row('Total', formatNumber(p.total))
+          + row('New', `+${formatNumber(p.added)}`)
       },
     },
-    xAxis: {
-      type: 'category',
-      data: props.points.map((p) => formatAxis(p.start, g)),
-      boundaryGap: true,
-      axisLine: { lineStyle: { color: t.border } },
-      axisTick: { show: false },
-      axisLabel: { color: t.muted, fontSize: 11, hideOverlap: true, margin: 12 },
-    },
-    yAxis: [
+    xAxis: [
+      { ...axisCommon, gridIndex: 0, axisLabel: { show: false } },
       {
-        type: 'value',
-        position: 'left',
-        splitNumber: 4,
-        axisLabel: { color: t.muted, fontSize: 11, formatter: formatCompact },
-        splitLine: { lineStyle: { color: t.grid, type: [4, 4] } },
-      },
-      {
-        type: 'value',
-        position: 'right',
-        splitNumber: 4,
-        show: !narrow,
-        axisLabel: { color: t.muted, fontSize: 11, formatter: formatCompact },
-        splitLine: { show: false },
+        ...axisCommon,
+        gridIndex: 1,
+        axisLabel: { color: t.muted, fontSize: 11, hideOverlap: true, margin: 10 },
       },
     ],
+    yAxis: [
+      { ...valueAxis(4), gridIndex: 0 },
+      { ...valueAxis(2), gridIndex: 1, minInterval: 1 },
+    ],
     dataZoom: [
-      { type: 'inside', zoomOnMouseWheel: 'shift', moveOnMouseWheel: false },
+      { type: 'inside', xAxisIndex: [0, 1], zoomOnMouseWheel: 'shift', moveOnMouseWheel: false },
       {
         type: 'slider',
-        height: 22,
-        bottom: 8,
-        borderColor: 'transparent',
-        backgroundColor: t.grid,
+        xAxisIndex: [0, 1],
+        height: sliderHeight,
+        bottom: 2,
+        left: 2,
+        right: 58,
+        borderColor: t.grid,
+        backgroundColor: 'transparent',
         fillerColor: t.accentSoft,
-        dataBackground: { lineStyle: { color: t.border }, areaStyle: { color: t.grid } },
-        selectedDataBackground: { lineStyle: { color: t.accent }, areaStyle: { color: t.accentSoft } },
-        handleStyle: { color: t.bg, borderColor: t.border },
-        moveHandleStyle: { color: t.border },
+        dataBackground: { lineStyle: { color: t.axis, width: 1 }, areaStyle: { color: t.grid } },
+        selectedDataBackground: { lineStyle: { color: t.accent, width: 1 }, areaStyle: { color: t.accentSoft } },
+        handleStyle: { color: t.surface, borderColor: t.border },
+        moveHandleStyle: { color: t.grid },
+        emphasis: { handleStyle: { borderColor: t.accent }, moveHandleStyle: { color: t.accentSoft } },
         textStyle: { color: t.muted, fontSize: 11 },
+        showDetail: false,
         brushSelect: false,
       },
     ],
     series: [
       {
-        name: `New per ${g}`,
-        type: 'bar',
-        yAxisIndex: 1,
-        data: props.points.map((p) => p.added),
-        itemStyle: { color: t.bar, opacity: 0.55, borderRadius: [3, 3, 0, 0] },
-        emphasis: { itemStyle: { opacity: 0.9 } },
-        barMaxWidth: 18,
-        large: true,
-        z: 2,
-      },
-      {
         name: 'Total stars',
         type: 'line',
+        xAxisIndex: 0,
         yAxisIndex: 0,
-        data: props.points.map((p) => p.total),
-        showSymbol: false,
-        symbol: 'circle',
-        symbolSize: 8,
-        smooth: 0.25,
-        lineStyle: { color: t.accent, width: 2.5 },
-        itemStyle: { color: t.accent, borderColor: t.bg, borderWidth: 2 },
-        z: 3,
-      },
-      {
-        // Area fill drawn as its own series beneath the bars so it doesn't tint them
-        type: 'line',
-        yAxisIndex: 0,
-        data: props.points.map((p) => p.total),
-        showSymbol: false,
-        smooth: 0.25,
-        silent: true,
-        tooltip: { show: false },
-        lineStyle: { width: 0 },
+        data: props.points.map((p, i) => (i === last
+          ? { value: p.total, symbol: 'circle', symbolSize: 9 }
+          : { value: p.total, symbol: 'none' })),
+        showSymbol: true,
+        smooth: 0.2,
+        lineStyle: { color: t.accent, width: 2, cap: 'round', join: 'round' },
+        itemStyle: { color: t.accent, borderColor: t.surface, borderWidth: 2 },
+        emphasis: { disabled: true },
         areaStyle: {
           color: new graphic.LinearGradient(0, 0, 0, 1, [
-            { offset: 0, color: t.accentSoft.replace(/[\d.]+\)$/, '0.32)') },
-            { offset: 1, color: t.accentSoft.replace(/[\d.]+\)$/, '0)') },
+            { offset: 0, color: withAlpha(t.accentSoft, 0.16) },
+            { offset: 1, color: withAlpha(t.accentSoft, 0.01) },
           ]),
         },
-        z: 1,
+        endLabel: {
+          show: true,
+          formatter: ({ value }) => formatCompact(value),
+          color: t.text,
+          fontSize: 12,
+          fontWeight: 600,
+          distance: 8,
+        },
+      },
+      {
+        name: `New per ${g}`,
+        type: 'bar',
+        xAxisIndex: 1,
+        yAxisIndex: 1,
+        // the current period is still in progress, so it is drawn faded
+        data: props.points.map((p, i) => (i === last
+          ? { value: p.added, itemStyle: { opacity: 0.4 } }
+          : p.added)),
+        itemStyle: { color: t.accent, borderRadius: [4, 4, 0, 0] },
+        emphasis: { itemStyle: { color: t.accent } },
+        barMaxWidth: 24,
+        barCategoryGap: '24%',
       },
     ],
   }
@@ -171,7 +192,7 @@ function render() {
 }
 
 function download(filename) {
-  const url = chart.getDataURL({ type: 'png', pixelRatio: 2, backgroundColor: tokens().bg, excludeComponents: ['dataZoom'] })
+  const url = chart.getDataURL({ type: 'png', pixelRatio: 2, backgroundColor: tokens().surface, excludeComponents: ['dataZoom'] })
   const a = document.createElement('a')
   a.href = url
   a.download = `${filename}.png`
@@ -183,7 +204,12 @@ defineExpose({ download })
 onMounted(() => {
   chart = init(el.value)
   render()
-  resizeObserver = new ResizeObserver(() => chart.resize())
+  resizeObserver = new ResizeObserver(() => {
+    chart.resize()
+    // panel heights depend on the container; merge only the layout so zoom survives
+    const { grid, title } = buildOption()
+    chart.setOption({ grid, title })
+  })
   resizeObserver.observe(el.value)
   scheme.addEventListener('change', render)
 })
@@ -200,6 +226,6 @@ watch(() => [props.points, props.granularity], render)
 <style scoped>
 .chart {
   width: 100%;
-  height: clamp(320px, 56vh, 520px);
+  height: clamp(360px, 54vh, 500px);
 }
 </style>

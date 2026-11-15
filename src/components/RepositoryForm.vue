@@ -71,7 +71,7 @@ function onSubmit() {
 }
 .field:focus-within {
   border-color: var(--accent);
-  box-shadow: 0 0 0 4px var(--accent-soft);
+  box-shadow: 0 0 0 4px var(--accent-ring);
 }
 .field.invalid {
   border-color: var(--danger);

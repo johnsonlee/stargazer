@@ -148,7 +148,7 @@ h1 {
   outline: none;
   transition: border-color .15s, box-shadow .15s;
 }
-.input:focus { border-color: var(--accent); box-shadow: 0 0 0 4px var(--accent-soft); }
+.input:focus { border-color: var(--accent); box-shadow: 0 0 0 4px var(--accent-ring); }
 .input.invalid { border-color: var(--danger); box-shadow: 0 0 0 4px var(--danger-soft); }
 
 .error { margin: 8px 0 0; font-size: 13px; color: var(--danger); }

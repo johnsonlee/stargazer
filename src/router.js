@@ -11,7 +11,12 @@ const router = createRouter({
       component: () => import('./components/Preferences.vue'),
     },
     {
-      path: '/:owner?/:repo?',
+      path: '/',
+      name: 'repos',
+      component: () => import('./views/Repositories.vue'),
+    },
+    {
+      path: '/:owner/:repo',
       name: 'home',
       component: Home,
     },

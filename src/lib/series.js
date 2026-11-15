@@ -1,5 +1,5 @@
-// All bucketing is done in UTC, matching GitHub's `starred_at` timestamps.
-const DAY = 86_400_000
+// Buckets follow the viewer's local time zone (calendar days, Monday-start weeks, months),
+// stepping with calendar arithmetic so DST transitions never skip or duplicate a day.
 
 export const GRANULARITIES = [
   { value: 'day', label: 'Day', noun: 'day' },
@@ -12,29 +12,21 @@ export function parseGranularity(value) {
 }
 
 function bucketStart(time, granularity) {
-  const day = Math.floor(time / DAY) * DAY
-  if (granularity === 'week') {
-    // ISO weeks start on Monday
-    return day - ((new Date(day).getUTCDay() + 6) % 7) * DAY
-  }
-  if (granularity === 'month') {
-    const d = new Date(day)
-    return Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), 1)
-  }
-  return day
+  const d = new Date(time)
+  if (granularity === 'month') return new Date(d.getFullYear(), d.getMonth(), 1).getTime()
+  const day = new Date(d.getFullYear(), d.getMonth(), d.getDate())
+  if (granularity === 'week') day.setDate(day.getDate() - ((day.getDay() + 6) % 7))
+  return day.getTime()
 }
 
 function nextBucket(start, granularity) {
-  if (granularity === 'week') return start + 7 * DAY
-  if (granularity === 'month') {
-    const d = new Date(start)
-    return Date.UTC(d.getUTCFullYear(), d.getUTCMonth() + 1, 1)
-  }
-  return start + DAY
+  const d = new Date(start)
+  if (granularity === 'month') return new Date(d.getFullYear(), d.getMonth() + 1, 1).getTime()
+  return new Date(d.getFullYear(), d.getMonth(), d.getDate() + (granularity === 'week' ? 7 : 1)).getTime()
 }
 
 /**
- * Buckets star timestamps into contiguous periods from the repository's
+ * Buckets star timestamps into contiguous local-time periods from the repository's
  * creation (or its first star, whichever is earlier) up to `now`.
  * Returns `[{ start, added, total }]` where `total` is cumulative.
  */
@@ -63,26 +55,37 @@ const pad = (n) => String(n).padStart(2, '0')
 
 export function formatAxis(start, granularity) {
   const d = new Date(start)
-  const ym = `${d.getUTCFullYear()}-${pad(d.getUTCMonth() + 1)}`
-  return granularity === 'month' ? ym : `${ym}-${pad(d.getUTCDate())}`
+  const ym = `${d.getFullYear()}-${pad(d.getMonth() + 1)}`
+  return granularity === 'month' ? ym : `${ym}-${pad(d.getDate())}`
 }
 
 const dayFormat = new Intl.DateTimeFormat('en-US', {
-  weekday: 'short', month: 'short', day: 'numeric', year: 'numeric', timeZone: 'UTC',
+  weekday: 'short', month: 'short', day: 'numeric', year: 'numeric',
 })
 const rangeFormat = new Intl.DateTimeFormat('en-US', {
-  month: 'short', day: 'numeric', year: 'numeric', timeZone: 'UTC',
+  month: 'short', day: 'numeric', year: 'numeric',
 })
 const monthFormat = new Intl.DateTimeFormat('en-US', {
-  month: 'long', year: 'numeric', timeZone: 'UTC',
+  month: 'long', year: 'numeric',
 })
 
 export function formatPeriod(start, granularity) {
   if (granularity === 'week') {
-    return `Week of ${rangeFormat.formatRange(new Date(start), new Date(start + 6 * DAY))}`
+    const end = new Date(start)
+    end.setDate(end.getDate() + 6)
+    return `Week of ${rangeFormat.formatRange(new Date(start), end)}`
   }
   if (granularity === 'month') return monthFormat.format(new Date(start))
   return dayFormat.format(new Date(start))
+}
+
+/** The viewer's time zone, e.g. "Asia/Shanghai (GMT+8)". */
+export function localTimeZone() {
+  const name = Intl.DateTimeFormat().resolvedOptions().timeZone
+  const offset = new Intl.DateTimeFormat('en-US', { timeZoneName: 'shortOffset' })
+    .formatToParts(new Date())
+    .find((part) => part.type === 'timeZoneName')?.value
+  return offset && name !== 'UTC' ? `${name} (${offset})` : name
 }
 
 export function formatDate(value) {
