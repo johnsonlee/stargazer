@@ -1,19 +1,5 @@
 <template>
-  <section v-if="!repo" class="container hero">
-    <div class="hero-glow" aria-hidden="true"></div>
-    <p class="eyebrow"><Icon name="star" :size="12" /> Star history for any GitHub repository</p>
-    <h1>Watch a repository grow,<br />one star at a time.</h1>
-    <p class="hero-lede">
-      Enter <code>owner/repository</code> above to see total stars over time and how many arrived each day, week or month.
-    </p>
-    <div class="examples">
-      <RouterLink v-for="example in EXAMPLES" :key="example" :to="`/${example}`" class="chip">
-        {{ example }}
-      </RouterLink>
-    </div>
-  </section>
-
-  <section v-else class="container page">
+  <section class="container page">
     <header class="repo-head">
       <div class="repo-title">
         <img v-if="meta" class="avatar" :src="avatar" alt="" width="40" height="40" />
@@ -30,7 +16,7 @@
       </div>
       <div v-if="meta" class="repo-meta">
         <span v-if="meta.language" class="meta-item">{{ meta.language }}</span>
-        <span class="meta-item">Created {{ formatDate(meta.created_at) }}</span>
+        <span v-if="Number.isFinite(meta.forks_count)" class="meta-item">{{ formatNumber(meta.forks_count) }} forks</span>
       </div>
     </header>
 
@@ -40,80 +26,83 @@
       <button class="btn btn-ghost" @click="load(true)">Try again</button>
     </div>
 
-    <template v-else>
-      <div class="stats">
-        <div class="card stat stat-primary">
-          <span class="stat-label">Total stars</span>
-          <span class="stat-value">
+    <div v-else class="card overview">
+      <div class="overview-head">
+        <div class="hero-figure">
+          <span class="figure-label">Total stars</span>
+          <span class="hero-value">
             <template v-if="meta">{{ formatNumber(meta.stargazers_count) }}</template>
-            <span v-else class="skeleton-num"></span>
+            <span v-else class="skeleton-num skeleton-hero"></span>
           </span>
-          <span class="stat-sub">on GitHub today</span>
+          <span class="hero-delta">
+            <template v-if="stats">
+              <span :class="{ up: stats.latest.added > 0 }">+{{ formatNumber(stats.latest.added) }}</span> {{ granularity === 'day' ? 'today' : `this ${noun}` }} so far
+            </template>
+          </span>
         </div>
-        <div class="card stat">
-          <span class="stat-label">This {{ noun }}</span>
-          <span class="stat-value">
-            <template v-if="stats">+{{ formatNumber(stats.latest.added) }}</template>
-            <span v-else class="skeleton-num"></span>
-          </span>
-          <span class="stat-sub">{{ stats ? formatPeriod(stats.latest.start, granularity) : '' }}</span>
-        </div>
-        <div class="card stat">
-          <span class="stat-label">Best {{ noun }}</span>
-          <span class="stat-value">
-            <template v-if="stats">+{{ formatNumber(stats.peak.added) }}</template>
-            <span v-else class="skeleton-num"></span>
-          </span>
-          <span class="stat-sub">{{ stats && stats.peak.added ? formatPeriod(stats.peak.start, granularity) : '' }}</span>
-        </div>
-        <div class="card stat">
-          <span class="stat-label">Average per {{ noun }}</span>
-          <span class="stat-value">
-            <template v-if="stats">{{ stats.average }}</template>
-            <span v-else class="skeleton-num"></span>
-          </span>
-          <span class="stat-sub">{{ stats ? `across ${formatNumber(points.length)} ${noun}s` : '' }}</span>
+        <div class="chart-tools">
+          <div class="segmented" role="radiogroup" aria-label="Group by" :style="{ '--index': granularityIndex }">
+            <span class="segmented-thumb" aria-hidden="true"></span>
+            <button
+              v-for="g in GRANULARITIES"
+              :key="g.value"
+              type="button"
+              role="radio"
+              :aria-checked="g.value === granularity"
+              :class="{ active: g.value === granularity }"
+              @click="setGranularity(g.value)"
+            >
+              {{ g.label }}
+            </button>
+          </div>
+          <button class="icon-action" :disabled="!points.length" title="Download PNG" aria-label="Download chart as PNG" @click="chart?.download(`${owner}-${name}-stars-by-${granularity}`)">
+            <Icon name="download" :size="16" />
+          </button>
         </div>
       </div>
 
-      <div class="card chart-card">
-        <div class="chart-head">
-          <div>
-            <h2>Star history</h2>
-            <p class="chart-sub">Cumulative stars and new stars per {{ noun }} (UTC)</p>
-          </div>
-          <div class="chart-tools">
-            <div class="segmented" role="radiogroup" aria-label="Group by" :style="{ '--index': granularityIndex }">
-              <span class="segmented-thumb" aria-hidden="true"></span>
-              <button
-                v-for="g in GRANULARITIES"
-                :key="g.value"
-                type="button"
-                role="radio"
-                :aria-checked="g.value === granularity"
-                :class="{ active: g.value === granularity }"
-                @click="setGranularity(g.value)"
-              >
-                {{ g.label }}
-              </button>
-            </div>
-            <button class="icon-action" :disabled="!points.length" title="Download PNG" aria-label="Download chart as PNG" @click="chart?.download(`${owner}-${name}-stars-by-${granularity}`)">
-              <Icon name="download" :size="16" />
-            </button>
-          </div>
+      <dl class="figures">
+        <div class="figure">
+          <dt>Best {{ noun }}</dt>
+          <dd>
+            <template v-if="stats">+{{ formatNumber(stats.peak.added) }}</template>
+            <span v-else class="skeleton-num"></span>
+          </dd>
+          <dd class="figure-sub">{{ stats && stats.peak.added ? formatPeriod(stats.peak.start, granularity) : '' }}</dd>
         </div>
+        <div class="figure">
+          <dt>Average per {{ noun }}</dt>
+          <dd>
+            <template v-if="stats">{{ stats.average }}</template>
+            <span v-else class="skeleton-num"></span>
+          </dd>
+          <dd class="figure-sub">{{ stats ? `across ${formatNumber(points.length)} ${noun}s` : '' }}</dd>
+        </div>
+        <div class="figure">
+          <dt>First star</dt>
+          <dd>
+            <template v-if="stats">{{ stats.firstStar ? formatDate(stats.firstStar) : '—' }}</template>
+            <span v-else class="skeleton-num"></span>
+          </dd>
+          <dd class="figure-sub">{{ meta ? `repository created ${formatDate(meta.created_at)}` : '' }}</dd>
+        </div>
+      </dl>
 
+      <div class="chart-area">
         <div v-if="loading" class="chart-loading">
           <div class="progress" :style="{ '--progress': progressRatio }"><span></span></div>
           <p>{{ progressText }}</p>
         </div>
         <StarTrendingChart v-else-if="points.length" ref="chart" :points="points" :granularity="granularity" />
-
-        <p v-if="truncated" class="footnote">
-          GitHub only lists the first {{ formatNumber(stars.length) }} stargazers, so the chart stops there. The total above is exact.
-        </p>
       </div>
-    </template>
+
+      <p class="footnote">
+        Times are in your time zone, {{ timeZone }}; the latest {{ noun }} is still in progress.
+        <template v-if="truncated">
+          GitHub only lists the first {{ formatNumber(stars.length) }} stargazers, so the chart stops there; the total above is exact.
+        </template>
+      </p>
+    </div>
   </section>
 </template>
 
@@ -124,19 +113,18 @@ import Icon from '../components/Icon.vue'
 import { fetchRepository, fetchStargazers, GitHubError } from '../github/api/v3'
 import { getToken } from '../github/token'
 import {
-  GRANULARITIES, buildSeries, formatDate, formatNumber, formatPeriod, parseGranularity,
+  GRANULARITIES, buildSeries, formatDate, formatNumber, formatPeriod, localTimeZone, parseGranularity,
 } from '../lib/series'
 
 // ECharts is the bulk of the bundle; load it only once a chart is shown.
 const StarTrendingChart = defineAsyncComponent(() => import('../components/chart/StarTrendingChart.vue'))
-
-const EXAMPLES = ['vuejs/core', 'vitejs/vite', 'didi/booster', 'apache/echarts']
 
 // Stargazer lists are expensive to fetch; keep them for the session so switching
 // granularity or navigating back is instant.
 const cache = new Map()
 
 const route = useRoute()
+const timeZone = localTimeZone()
 const router = useRouter()
 
 const owner = computed(() => route.params.owner || '')
@@ -170,7 +158,10 @@ const stats = computed(() => {
   const peak = points.value.reduce((best, p) => (p.added > best.added ? p : best))
   const fetched = points.value.at(-1).total
   const average = fetched / points.value.length
+  let firstStar = Infinity
+  for (const s of stars.value) firstStar = Math.min(firstStar, Date.parse(s))
   return {
+    firstStar: Number.isFinite(firstStar) ? firstStar : null,
     latest: points.value.at(-1),
     peak,
     average: average >= 10 ? formatNumber(Math.round(average)) : average.toFixed(1),
@@ -242,90 +233,6 @@ watch(repo, () => load(), { immediate: true })
 </script>
 
 <style scoped>
-/* ---------- landing ---------- */
-.hero {
-  position: relative;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  text-align: center;
-  padding-top: clamp(64px, 14vh, 140px);
-  padding-bottom: 96px;
-}
-
-.hero-glow {
-  position: absolute;
-  inset: 0 0 auto;
-  height: 420px;
-  margin: 0 auto;
-  max-width: 720px;
-  background: radial-gradient(closest-side, var(--accent-glow), transparent);
-  opacity: .55;
-  filter: blur(40px);
-  pointer-events: none;
-  z-index: -1;
-}
-
-.eyebrow {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  margin: 0 0 20px;
-  padding: 5px 12px;
-  border-radius: 999px;
-  border: 1px solid var(--border-strong);
-  background: var(--surface);
-  color: var(--text-2);
-  font-size: 13px;
-}
-.eyebrow .icon { color: var(--accent); }
-
-.hero h1 {
-  margin: 0;
-  font-size: clamp(32px, 6vw, 56px);
-  line-height: 1.06;
-  font-weight: 700;
-  letter-spacing: -0.035em;
-  text-wrap: balance;
-}
-
-.hero-lede {
-  max-width: 520px;
-  margin: 20px 0 32px;
-  color: var(--text-2);
-  font-size: 17px;
-  text-wrap: pretty;
-}
-
-code {
-  font-family: var(--mono);
-  font-size: .88em;
-  padding: 2px 6px;
-  border-radius: 6px;
-  background: var(--surface-2);
-  border: 1px solid var(--border);
-}
-
-.examples {
-  display: flex;
-  flex-wrap: wrap;
-  justify-content: center;
-  gap: 8px;
-}
-
-.chip {
-  padding: 7px 14px;
-  border-radius: 999px;
-  border: 1px solid var(--border-strong);
-  background: var(--surface);
-  font-family: var(--mono);
-  font-size: 13px;
-  color: var(--text-2);
-  text-decoration: none;
-  transition: border-color .15s, color .15s, transform .15s;
-}
-.chip:hover { border-color: var(--accent); color: var(--text); transform: translateY(-1px); }
-
 /* ---------- repository page ---------- */
 .page { padding-top: 32px; padding-bottom: 64px; }
 
@@ -381,35 +288,67 @@ code {
   white-space: nowrap;
 }
 
-/* stats */
-.stats {
-  display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: 12px;
-  margin-bottom: 12px;
+/* overview card */
+.overview { overflow: hidden; }
+
+.overview-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px 24px;
+  padding: 24px 24px 20px;
 }
 
-.stat {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-  padding: 16px 18px;
+.hero-figure { display: flex; flex-direction: column; min-width: 0; }
+
+.figure-label, .figures dt {
+  font-size: 13px;
+  font-weight: 550;
+  color: var(--muted);
+}
+
+.hero-value {
+  margin-top: 2px;
+  font-size: clamp(40px, 7vw, 56px);
+  font-weight: 650;
+  letter-spacing: -0.035em;
+  line-height: 1.05;
+}
+
+.hero-delta {
+  min-height: 1.5em;
+  margin-top: 8px;
+  font-size: 14px;
+  color: var(--text-2);
+}
+.hero-delta .up { color: var(--success); font-weight: 600; }
+
+.figures {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  margin: 0;
+  border-top: 1px solid var(--border);
+  border-bottom: 1px solid var(--border);
+}
+
+.figure {
+  padding: 14px 24px;
   min-width: 0;
 }
+.figure + .figure { border-left: 1px solid var(--border); }
 
-.stat-label { font-size: 12.5px; font-weight: 550; color: var(--muted); }
+.figures dd { margin: 0; }
 
-.stat-value {
-  font-size: 26px;
-  font-weight: 650;
-  letter-spacing: -0.025em;
-  font-variant-numeric: tabular-nums;
-  line-height: 1.3;
+.figures dd:not(.figure-sub) {
+  margin-top: 2px;
+  font-size: 20px;
+  font-weight: 600;
+  letter-spacing: -0.015em;
+  line-height: 1.35;
 }
 
-.stat-primary .stat-value { color: var(--accent-strong); }
-
-.stat-sub {
+.figure-sub {
   min-height: 1.5em;
   font-size: 12.5px;
   color: var(--muted);
@@ -418,24 +357,7 @@ code {
   text-overflow: ellipsis;
 }
 
-@media (max-width: 860px) {
-  .stats { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-}
-
-/* chart card */
-.chart-card { padding: 20px 20px 12px; }
-
-.chart-head {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 12px 16px;
-  margin-bottom: 12px;
-}
-
-.chart-head h2 { margin: 0; font-size: 16px; font-weight: 650; letter-spacing: -0.01em; }
-.chart-sub { margin: 2px 0 0; font-size: 13px; color: var(--muted); }
+.chart-area { padding: 20px 20px 8px 24px; }
 
 .chart-tools { display: flex; align-items: center; gap: 8px; }
 
@@ -446,7 +368,6 @@ code {
   padding: 3px;
   border-radius: 10px;
   background: var(--surface-2);
-  border: 1px solid var(--border);
 }
 
 .segmented-thumb {
@@ -457,7 +378,7 @@ code {
   width: calc((100% - 6px) / 3);
   border-radius: 7px;
   background: var(--surface);
-  box-shadow: 0 1px 2px rgba(0, 0, 0, .08), 0 0 0 1px var(--border);
+  box-shadow: 0 1px 2px rgba(0, 0, 0, .1), 0 0 0 1px var(--border);
   transform: translateX(calc(var(--index) * 100%));
   transition: transform .25s cubic-bezier(.3, .7, .2, 1);
 }
@@ -480,16 +401,16 @@ code {
 .icon-action {
   display: grid;
   place-items: center;
-  width: 38px;
-  height: 38px;
+  width: 36px;
+  height: 36px;
   border-radius: 10px;
-  border: 1px solid var(--border);
+  border: 0;
   background: var(--surface-2);
   color: var(--muted);
   cursor: pointer;
-  transition: color .15s, border-color .15s;
+  transition: color .15s, background-color .15s;
 }
-.icon-action:hover:not(:disabled) { color: var(--text); border-color: var(--border-strong); }
+.icon-action:hover:not(:disabled) { color: var(--text); }
 .icon-action:disabled { opacity: .4; cursor: default; }
 
 .chart-loading {
@@ -498,7 +419,7 @@ code {
   align-items: center;
   justify-content: center;
   gap: 14px;
-  height: clamp(320px, 56vh, 520px);
+  height: clamp(360px, 54vh, 500px);
   color: var(--muted);
   font-size: 13px;
   font-variant-numeric: tabular-nums;
@@ -522,7 +443,8 @@ code {
 }
 
 .footnote {
-  margin: 4px 0 4px;
+  margin: 0;
+  padding: 0 24px 18px;
   font-size: 12.5px;
   color: var(--muted);
 }
@@ -541,6 +463,7 @@ code {
 }
 .skeleton-text { height: 14px; width: min(360px, 60vw); border-radius: 6px; margin-top: 10px; }
 .skeleton-num { display: inline-block; width: 72px; height: 22px; border-radius: 6px; vertical-align: middle; }
+.skeleton-hero { width: 160px; height: 48px; border-radius: 10px; }
 
 @keyframes shimmer {
   from { background-position: 200% 0; }
@@ -549,11 +472,17 @@ code {
 
 @media (max-width: 559px) {
   .page { padding-top: 24px; }
-  .chart-card { padding: 16px 12px 8px; }
+  .overview-head { padding: 20px 16px 16px; }
   .chart-tools { width: 100%; }
   .segmented { flex: 1; }
   .segmented button { min-width: 0; }
-  .stat { padding: 14px; }
-  .stat-value { font-size: 22px; }
+  .figures { grid-template-columns: 1fr; }
+  .figure { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; padding: 10px 16px; }
+  .figure + .figure { border-left: 0; border-top: 1px solid var(--border); }
+  .figures dt { flex: 1; }
+  .figures dd:not(.figure-sub) { font-size: 16px; }
+  .figure-sub { display: none; }
+  .chart-area { padding: 16px 8px 4px 16px; }
+  .footnote { padding: 0 16px 16px; }
 }
 </style>

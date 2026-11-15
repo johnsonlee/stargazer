@@ -59,9 +59,8 @@ import RepositoryForm from './components/RepositoryForm.vue'
   width: 28px;
   height: 28px;
   border-radius: 8px;
-  color: #1a1300;
-  background: linear-gradient(140deg, #ffd66b, #e9a400);
-  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.06), 0 4px 14px -4px var(--accent-glow);
+  color: var(--bg);
+  background: var(--text);
 }
 
 .header-search { flex: 1; max-width: 460px; margin: 0 auto; }
