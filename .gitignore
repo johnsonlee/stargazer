@@ -19,3 +19,6 @@ yarn-error.log*
 *.njsproj
 *.sln
 *.sw?
+
+# build output, deployed by .github/workflows/pages.yml
+/docs
