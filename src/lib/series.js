@@ -19,6 +19,9 @@ function bucketStart(time, granularity) {
   return day.getTime()
 }
 
+/** Where the period starting at `start` ends (exclusive). */
+export const periodEnd = (start, granularity) => nextBucket(start, granularity)
+
 function nextBucket(start, granularity) {
   const d = new Date(start)
   if (granularity === 'month') return new Date(d.getFullYear(), d.getMonth() + 1, 1).getTime()

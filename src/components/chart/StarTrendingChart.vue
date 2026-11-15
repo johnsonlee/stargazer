@@ -8,7 +8,7 @@ import { init, use, graphic } from 'echarts/core'
 import { BarChart, LineChart } from 'echarts/charts'
 import { DataZoomComponent, GridComponent, TitleComponent, TooltipComponent } from 'echarts/components'
 import { CanvasRenderer } from 'echarts/renderers'
-import { formatAxis, formatCompact, formatNumber, formatPeriod } from '../../lib/series'
+import { formatAxis, formatCompact, formatNumber, formatPeriod, periodEnd } from '../../lib/series'
 
 use([LineChart, BarChart, GridComponent, TitleComponent, TooltipComponent, DataZoomComponent, CanvasRenderer])
 
@@ -189,24 +189,37 @@ function buildOption() {
 
 const emit = defineEmits(['range'])
 
-// The visible time range as `{ from, to }` (to exclusive), or `null` when the whole
-// history is shown, so other views can follow the zoom.
-function emitRange() {
+// The zoomed category indices, or `null` when the whole history is shown.
+function zoomWindow() {
   const zoom = chart.getOption().dataZoom?.[0]
   const last = props.points.length - 1
-  const first = Math.max(0, zoom?.startValue ?? 0)
+  const start = Math.max(0, zoom?.startValue ?? 0)
   const end = Math.min(last, zoom?.endValue ?? last)
-  emit('range', first <= 0 && end >= last ? null : {
-    from: props.points[first].start,
-    to: end >= last ? Date.now() : props.points[end + 1].start,
+  return start <= 0 && end >= last ? null : { start, end }
+}
+
+// The visible time range as `{ from, to }` (to exclusive, at a period boundary), or
+// `null` when the whole history is shown, so other views can follow the zoom.
+function emitRange() {
+  const zoom = zoomWindow()
+  emit('range', zoom && {
+    from: props.points[zoom.start].start,
+    to: periodEnd(props.points[zoom.end].start, props.granularity),
   })
 }
 
-function render() {
+// Redraws the chart. New data for the same granularity (an auto-refresh, a theme
+// switch) is merged in place: lines move to their new values without replaying the
+// entry animation, and the zoom stays where it was. A new granularity starts over.
+function render(inPlace = false) {
   if (!chart) return
-  // a full redraw resets the zoom
-  chart.setOption(buildOption(), { notMerge: true })
-  emit('range', null)
+  if (inPlace) {
+    chart.setOption(buildOption())
+    emitRange()
+  } else {
+    chart.setOption(buildOption(), { notMerge: true })
+    emit('range', null)
+  }
 }
 
 function resetZoom() {
@@ -234,16 +247,18 @@ onMounted(() => {
     chart.setOption({ grid, title })
   })
   resizeObserver.observe(el.value)
-  scheme.addEventListener('change', render)
+  scheme.addEventListener('change', onScheme)
 })
 
 onBeforeUnmount(() => {
-  scheme.removeEventListener('change', render)
+  scheme.removeEventListener('change', onScheme)
   resizeObserver?.disconnect()
   chart?.dispose()
 })
 
-watch(() => [props.points, props.granularity], render)
+const onScheme = () => render(true)
+
+watch(() => [props.points, props.granularity], (_, [, granularity]) => render(granularity === props.granularity))
 </script>
 
 <style scoped>

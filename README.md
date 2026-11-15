@@ -6,6 +6,8 @@ Since June 2026 GitHub lists who starred a repository only to its admins and col
 
 Profiles are cached in the browser (IndexedDB) per user: identity for 30 days, followers and pushes for a day, contribution counts for a week.
 
+The repository page refreshes itself in place every 5 minutes by default (10, 15, 30 or 60 minutes, or off, chosen next to the chart and remembered per browser). A refresh reads only new stargazer pages, or the latest 30 weeks of history, and pauses while the tab is hidden.
+
 Live at <https://stargazer.johnsonlee.io>. Deep links look like `#/owner/repo?by=week` (`by` is `day` by default, or `week` / `month`).
 
 ## Development
