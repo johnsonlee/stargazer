@@ -28,9 +28,11 @@ async function request(url, token, accept = 'application/vnd.github+json') {
   return resp
 }
 
+// The last page number from a `Link` header; `null` when there is no `last` link,
+// i.e. the page just fetched is the last one.
 function lastPage(link) {
   const match = link && link.match(/[?&]page=(\d+)>;\s*rel="last"/)
-  return match ? Number(match[1]) : 1
+  return match ? Number(match[1]) : null
 }
 
 export async function fetchRateLimit(token) {
@@ -46,23 +48,24 @@ export async function fetchUser(token) {
 }
 
 /**
- * Fetches every page of a paginated endpoint with bounded concurrency.
- * `url(page)` builds the URL for a 1-based page number.
+ * Fetches every page of a paginated endpoint from `firstPage` on, with bounded
+ * concurrency. `url(page)` builds the URL for a 1-based page number.
  */
-async function fetchAllPages(url, token, accept, onProgress = () => {}, maxPages = Infinity) {
-  const first = await request(url(1), token, accept)
-  const total = Math.min(lastPage(first.headers.get('Link')), maxPages)
+async function fetchAllPages(url, token, accept, onProgress = () => {}, maxPages = Infinity, firstPage = 1) {
+  const first = await request(url(firstPage), token, accept)
+  const last = Math.max(firstPage, Math.min(lastPage(first.headers.get('Link')) ?? firstPage, maxPages))
+  const total = last - firstPage + 1
   const pages = new Array(total)
   pages[0] = await first.json()
 
   let done = 1
-  let next = 2
+  let next = firstPage + 1
   onProgress(done, total)
 
   async function worker() {
-    while (next <= total) {
+    while (next <= last) {
       const page = next++
-      pages[page - 1] = await (await request(url(page), token, accept)).json()
+      pages[page - firstPage] = await (await request(url(page), token, accept)).json()
       onProgress(++done, total)
     }
   }
@@ -81,10 +84,26 @@ export async function fetchUserRepos(token) {
  * Fetches every stargazer as `{ starredAt, id }`, where `id` is the user's GraphQL node ID.
  * `onProgress(done, total)` is called as pages arrive.
  */
+const stargazersUrl = (repo) => (page) => `${API}/repos/${repo}/stargazers?per_page=${PER_PAGE}&page=${page}`
+const toStargazer = (it) => ({ starredAt: it.starred_at, id: it.user?.node_id })
+
 export async function fetchStargazers(repo, token, onProgress) {
-  const url = (page) => `${API}/repos/${repo}/stargazers?per_page=${PER_PAGE}&page=${page}`
-  const stargazers = await fetchAllPages(url, token, STAR_JSON, onProgress, MAX_PAGES)
-  return stargazers.map((it) => ({ starredAt: it.starred_at, id: it.user?.node_id }))
+  const stargazers = await fetchAllPages(stargazersUrl(repo), token, STAR_JSON, onProgress, MAX_PAGES)
+  return stargazers.map(toStargazer)
+}
+
+/**
+ * Brings a stargazer list fetched earlier up to date. Stargazers are listed oldest first,
+ * so only the page holding the last known one and any pages after it are read again,
+ * usually a single request. Returns `null` when that page no longer starts where it
+ * used to (someone unstarred earlier on), so the caller should fetch everything again.
+ */
+export async function fetchNewStargazers(repo, token, known) {
+  const page = Math.min(Math.max(1, Math.ceil(known.length / PER_PAGE)), MAX_PAGES)
+  const offset = (page - 1) * PER_PAGE
+  const fresh = (await fetchAllPages(stargazersUrl(repo), token, STAR_JSON, undefined, MAX_PAGES, page)).map(toStargazer)
+  if (known.length > offset && fresh[0]?.id !== known[offset].id) return null
+  return known.slice(0, offset).concat(fresh)
 }
 
 /**
@@ -93,14 +112,30 @@ export async function fetchStargazers(repo, token, onProgress) {
  * repository's admins and collaborators since June 2026, this works for any public
  * repository, but it never says who starred. Pages hold 30 weeks each.
  */
-export async function fetchStarHistory(repo, token, onProgress) {
-  const url = (page) => `${API}/repos/${repo}/stargazers/history?page=${page}`
-  const weeks = await fetchAllPages(url, token, undefined, onProgress)
+const historyUrl = (repo) => (page) => `${API}/repos/${repo}/stargazers/history?page=${page}`
+const utcDate = (seconds) => new Date(seconds * 1000).toISOString().slice(0, 10)
+
+function weeksToDays(weeks) {
   const days = []
   for (const { week, days: counts } of weeks) {
     counts.forEach((count, i) => {
-      if (count) days.push({ date: new Date((week + i * 86400) * 1000).toISOString().slice(0, 10), count })
+      if (count) days.push({ date: utcDate(week + i * 86400), count })
     })
   }
-  return days
+  return days.sort((a, b) => (a.date < b.date ? -1 : 1))
+}
+
+export async function fetchStarHistory(repo, token, onProgress) {
+  return weeksToDays(await fetchAllPages(historyUrl(repo), token, undefined, onProgress))
+}
+
+/**
+ * Brings star history fetched earlier up to date by reading only the first page, which
+ * holds the latest 30 weeks, and replacing those weeks in `known`.
+ */
+export async function fetchNewStarHistory(repo, token, known) {
+  const weeks = await (await request(historyUrl(repo)(1), token)).json()
+  if (!weeks.length) return known
+  const since = utcDate(Math.min(...weeks.map((w) => w.week)))
+  return known.filter((d) => d.date < since).concat(weeksToDays(weeks))
 }

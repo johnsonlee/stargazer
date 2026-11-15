@@ -56,6 +56,12 @@
                 {{ g.label }}
               </button>
             </div>
+            <label class="refresh-select" :class="{ refreshing }" title="Auto-refresh interval">
+              <Icon name="refresh" :size="15" />
+              <select v-model.number="refreshInterval" aria-label="Auto-refresh interval">
+                <option v-for="o in REFRESH_OPTIONS" :key="o.value" :value="o.value">{{ o.label }}</option>
+              </select>
+            </label>
             <button class="icon-action" :disabled="!points.length" title="Download PNG" aria-label="Download chart as PNG" @click="chart?.download(`${owner}-${name}-stars-by-${granularity}`)">
               <Icon name="download" :size="16" />
             </button>
@@ -94,7 +100,7 @@
             <div class="progress" :style="{ '--progress': progressRatio }"><span></span></div>
             <p>{{ progressText }}</p>
           </div>
-          <StarTrendingChart v-else-if="points.length" ref="chart" :points="points" :granularity="granularity" @range="range = $event" />
+          <StarTrendingChart v-else-if="points.length" ref="chart" :points="points" :granularity="granularity" @range="setRange" />
         </div>
 
         <p class="footnote">
@@ -106,6 +112,9 @@
           <template v-if="truncated">
             GitHub only lists the first {{ formatNumber(stars.length) }} stargazers, so the chart stops there; the total above is exact.
           </template>
+          <span v-if="updatedAt" class="refresh-status">
+            {{ refreshStatus }}
+          </span>
         </p>
       </div>
 
@@ -115,12 +124,15 @@
 </template>
 
 <script setup>
-import { computed, defineAsyncComponent, ref, shallowRef, watch } from 'vue'
+import { computed, defineAsyncComponent, onBeforeUnmount, ref, shallowRef, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import Audience from '../components/Audience.vue'
 import Icon from '../components/Icon.vue'
-import { fetchRepository, fetchStargazers, fetchStarHistory, GitHubError } from '../github/api/v3'
+import {
+  fetchNewStargazers, fetchNewStarHistory, fetchRepository, fetchStargazers, fetchStarHistory, GitHubError,
+} from '../github/api/v3'
 import { getToken } from '../github/token'
+import { REFRESH_OPTIONS, getRefreshInterval, setRefreshInterval } from '../lib/refresh'
 import {
   GRANULARITIES, buildSeries, dailyEvents, formatDate, formatNumber, formatPeriod, localTimeZone, parseGranularity, starEvents,
 } from '../lib/series'
@@ -152,6 +164,11 @@ const progress = ref({ done: 0, total: 0 })
 const chart = ref(null)
 // the time range zoomed into on the chart, `null` for all time
 const range = shallowRef(null)
+// Only a different range is passed on, so a refresh that keeps the zoom doesn't make
+// the audience re-read the period.
+function setRange(next) {
+  if (next?.from !== range.value?.from || next?.to !== range.value?.to) range.value = next
+}
 let loadId = 0
 
 const avatar = computed(() => {
@@ -219,19 +236,39 @@ function describe(e) {
   return { title: 'Couldn’t reach GitHub', detail: 'Check your connection and try again.' }
 }
 
+// Shows freshly fetched data and remembers it for the session.
+function show(target, data) {
+  cache.set(target.toLowerCase(), { ...data, at: Date.now() })
+  meta.value = data.meta
+  stars.value = data.stars
+  history.value = data.history
+  updatedAt.value = Date.now()
+  refreshFailedAt.value = null
+}
+
 async function load(force = false) {
   const id = ++loadId
   const target = repo.value
   error.value = null
   progress.value = { done: 0, total: 0 }
   range.value = null
+  clearTimeout(refreshTimer)
+  refreshing.value = false
+  refreshFailedAt.value = null
+  updatedAt.value = null
   if (!target) return
 
   const cached = !force && cache.get(target.toLowerCase())
   meta.value = cached?.meta ?? null
   stars.value = cached?.stars ?? null
   history.value = cached?.history ?? null
-  if (cached) return
+  if (cached) {
+    // a revisit continues the refresh cycle from when the data was fetched
+    updatedAt.value = cached.at
+    lastAttempt = cached.at
+    schedule()
+    return
+  }
 
   const token = getToken()
   try {
@@ -239,19 +276,24 @@ async function load(force = false) {
     if (id !== loadId) return
     meta.value = repoMeta
     let stargazers = null
-    try {
-      stargazers = await fetchStargazers(target, token, (done, total) => {
-        if (id === loadId) progress.value = { done, total }
-      })
-    } catch (e) {
-      // the repository exists (its metadata loaded), so a 404 here means the token
-      // isn't an admin or collaborator; fall back to daily totals
-      if (!(e instanceof GitHubError && e.status === 404)) throw e
+    // GitHub lists stargazers only to admins and collaborators. Skip a request that is
+    // bound to 404 when the permissions already say so; otherwise try, and treat a 404
+    // (the repository itself exists, its metadata loaded) the same way.
+    const { permissions } = repoMeta
+    if (!permissions || permissions.admin || permissions.push) {
+      try {
+        stargazers = await fetchStargazers(target, token, (done, total) => {
+          if (id === loadId) progress.value = { done, total }
+        })
+      } catch (e) {
+        if (!(e instanceof GitHubError && e.status === 404)) throw e
+      }
     }
     if (id !== loadId) return
     if (stargazers) {
-      cache.set(target.toLowerCase(), { meta: repoMeta, stars: stargazers, history: null })
-      stars.value = stargazers
+      show(target, { meta: repoMeta, stars: stargazers, history: null })
+      lastAttempt = Date.now()
+      schedule()
       return
     }
     progress.value = { done: 0, total: 0, history: true }
@@ -259,8 +301,9 @@ async function load(force = false) {
       if (id === loadId) progress.value = { done, total, history: true }
     })
     if (id !== loadId) return
-    cache.set(target.toLowerCase(), { meta: repoMeta, stars: null, history: days })
-    history.value = days
+    show(target, { meta: repoMeta, stars: null, history: days })
+    lastAttempt = Date.now()
+    schedule()
   } catch (e) {
     if (id !== loadId) return
     if (e instanceof GitHubError && e.status === 401) {
@@ -270,6 +313,97 @@ async function load(force = false) {
     error.value = describe(e)
   }
 }
+
+// ---------- auto-refresh ----------
+// Refreshes are partial and silent: only new stargazer pages (or the latest weeks of
+// history) are read, the page never goes back to its loading state, and the chart
+// merges the new points in place, keeping the zoom.
+
+const refreshInterval = ref(getRefreshInterval())
+const updatedAt = ref(null)
+const refreshing = ref(false)
+const refreshFailedAt = ref(null)
+let refreshTimer = null
+let lastAttempt = 0
+// a refresh came due while the tab was hidden; run it when the tab is shown again
+let refreshDue = false
+
+const timeFormat = new Intl.DateTimeFormat(undefined, { hour: 'numeric', minute: '2-digit' })
+
+const refreshStatus = computed(() => {
+  const every = REFRESH_OPTIONS.find((o) => o.value === refreshInterval.value)
+  const cycle = refreshInterval.value ? `refreshing every ${every.label}` : 'auto-refresh is off'
+  if (refreshFailedAt.value) return `Couldn’t refresh at ${timeFormat.format(refreshFailedAt.value)}; showing data from ${timeFormat.format(updatedAt.value)}, ${cycle}.`
+  return `Updated ${timeFormat.format(updatedAt.value)}, ${cycle}.`
+})
+
+function schedule() {
+  clearTimeout(refreshTimer)
+  refreshDue = false
+  if (!refreshInterval.value || !updatedAt.value) return
+  const wait = Math.max(0, lastAttempt + refreshInterval.value * 60_000 - Date.now())
+  refreshTimer = setTimeout(() => {
+    if (document.hidden) refreshDue = true
+    else refresh()
+  }, wait)
+}
+
+/** `next` unless it holds the same stargazers as `current`, so unchanged data isn't redrawn. */
+const sameStars = (current, next) => current.length === next.length && current.at(-1)?.id === next.at(-1)?.id
+const sameDays = (current, next) => current.length === next.length
+  && current.every((d, i) => d.date === next[i].date && d.count === next[i].count)
+
+async function refresh() {
+  const id = loadId
+  const target = repo.value
+  if (!target || refreshing.value || !meta.value || (!stars.value && !history.value)) return
+  refreshing.value = true
+  lastAttempt = Date.now()
+  const token = getToken()
+  try {
+    const repoMeta = await fetchRepository(target, token)
+    let nextStars = stars.value
+    let nextHistory = history.value
+    if (stars.value) {
+      // `null` when earlier pages shifted (someone unstarred): read them all again
+      const fresh = await fetchNewStargazers(target, token, stars.value) ?? await fetchStargazers(target, token)
+      if (!sameStars(stars.value, fresh)) nextStars = fresh
+    } else {
+      const fresh = await fetchNewStarHistory(target, token, history.value)
+      if (!sameDays(history.value, fresh)) nextHistory = fresh
+    }
+    if (id !== loadId) return
+    show(target, { meta: repoMeta, stars: nextStars, history: nextHistory })
+  } catch (e) {
+    if (id !== loadId) return
+    if (e instanceof GitHubError && e.status === 401) {
+      router.replace({ name: 'settings', query: { redirect: route.fullPath, error: 'unauthorized' } })
+      return
+    }
+    // keep showing what we have; the next cycle tries again
+    refreshFailedAt.value = Date.now()
+  } finally {
+    if (id === loadId) {
+      refreshing.value = false
+      schedule()
+    }
+  }
+}
+
+function onVisibility() {
+  if (!document.hidden && refreshDue) refresh()
+}
+document.addEventListener('visibilitychange', onVisibility)
+
+watch(refreshInterval, (value) => {
+  setRefreshInterval(value)
+  schedule()
+})
+
+onBeforeUnmount(() => {
+  clearTimeout(refreshTimer)
+  document.removeEventListener('visibilitychange', onVisibility)
+})
 
 watch(repo, () => load(), { immediate: true })
 </script>
@@ -452,6 +586,42 @@ watch(repo, () => load(), { immediate: true })
   transition: color .15s;
 }
 .segmented button:hover, .segmented button.active { color: var(--text); }
+
+.refresh-select {
+  position: relative;
+  display: flex;
+  align-items: center;
+  height: 36px;
+  border-radius: 10px;
+  background: var(--surface-2);
+  color: var(--muted);
+  transition: color .15s;
+}
+.refresh-select:hover, .refresh-select:focus-within { color: var(--text); }
+.refresh-select .icon {
+  position: absolute;
+  left: 10px;
+  pointer-events: none;
+}
+.refresh-select.refreshing .icon { animation: spin 1s linear infinite; }
+.refresh-select select {
+  height: 100%;
+  padding: 0 28px 0 31px;
+  border: 0;
+  border-radius: inherit;
+  background: transparent url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6' viewBox='0 0 10 6'%3E%3Cpath d='M1 1l4 4 4-4' fill='none' stroke='%238a8a93' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E") no-repeat right 11px center;
+  font-size: 13px;
+  font-weight: 550;
+  color: inherit;
+  cursor: pointer;
+  appearance: none;
+}
+.refresh-select select:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.refresh-select option { color: var(--text); background: var(--surface); }
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
 
 .icon-action {
   display: grid;

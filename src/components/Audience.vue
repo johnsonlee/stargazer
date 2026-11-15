@@ -118,7 +118,7 @@
   <section v-if="audience?.size" class="card audience-more" aria-label="Stargazer sign-ups and most-followed stargazers">
     <header class="period">
       <p v-if="range">
-        <strong>Starred {{ formatDate(range.from) }} – {{ formatDate(range.to - 1) }}</strong>
+        <strong>Starred {{ formatDate(range.from) }} – {{ formatDate(Math.min(range.to, Date.now()) - 1) }}</strong>
         <template v-if="period"> · {{ formatNumber(period.stars) }} star{{ period.stars === 1 ? '' : 's' }}</template>
       </p>
       <p v-else>
@@ -366,7 +366,9 @@ async function loadActivity() {
   }
 }
 
-watch(() => props.stargazers, () => load(), { immediate: true })
+// Analyze once per repository: an auto-refresh adds a few stargazers, which wouldn't
+// move the shares but would redraw the sample and refetch profiles.
+watch(() => [props.repo, !props.stargazers], () => load(), { immediate: true })
 </script>
 
 <style scoped>
