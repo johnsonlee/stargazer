@@ -1,32 +1,31 @@
-import Vue from 'vue'
-import Router from 'vue-router'
-import v3 from '@/github/api/v3'
+import { createRouter, createWebHashHistory } from 'vue-router'
+import { getToken } from './github/token'
+import Home from './views/Home.vue'
 
-Vue.use(Router)
-
-export default new Router({
+const router = createRouter({
+  history: createWebHashHistory(),
   routes: [
     {
-        path: '/settings',
-        component: () => import('./components/Preferences.vue')
+      path: '/settings',
+      name: 'settings',
+      component: () => import('./components/Preferences.vue'),
     },
     {
-        path: '*',
-        component: () => import('./views/Home.vue'),
-        props: (route) => ({ route }),
-        beforeEnter: (to, from, next) => {
-            if (!localStorage.token) {
-                console.log('Token not found...');
-                next('/settings');
-            } else {
-                const valid = v3.isValidToken(localStorage.token);
-                if (valid) {
-                    next();
-                } else {
-                    next('/settings');
-                }
-            }
-        },
+      path: '/:owner?/:repo?',
+      name: 'home',
+      component: Home,
     },
-  ]
+    {
+      path: '/:pathMatch(.*)*',
+      redirect: '/',
+    },
+  ],
 })
+
+router.beforeEach((to) => {
+  if (to.name !== 'settings' && !getToken()) {
+    return { name: 'settings', query: { redirect: to.fullPath } }
+  }
+})
+
+export default router

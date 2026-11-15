@@ -1,103 +1,180 @@
 <template>
-    <div class='preferences-container'>
-        <div class='preferences-form'>
-            <input type='text' placeholder='Access Token' refs='token' v-model='token' @keyup.enter='onApplySettingsClick' />
-            <input type='submit' value='Apply Settings' v-on:click='onApplySettingsClick' />
-            <a class='link-gen-token' href='https://github.com/settings/tokens/new?scopes=repo&description=stargazer%20browser%20extension' title="Generate new token"><i class="icon-help-circled"></i></a>
-        </div>
-    </div>
+  <section class="container settings">
+    <form class="card panel" @submit.prevent="onApply">
+      <div class="panel-icon"><Icon name="github" :size="22" /></div>
+      <h1>Connect to GitHub</h1>
+      <p class="lede">
+        Stargazer reads star timestamps from the GitHub API. A personal access token lifts the
+        rate limit to 5,000 requests an hour. It is stored only in this browser.
+      </p>
+
+      <p v-if="route.query.error === 'unauthorized'" class="notice">
+        GitHub rejected the saved token. Paste a new one to continue.
+      </p>
+
+      <label class="label" for="token">Access token</label>
+      <input
+        id="token"
+        v-model.trim="token"
+        class="input"
+        :class="{ invalid: error }"
+        type="password"
+        placeholder="ghp_… or github_pat_…"
+        autocomplete="off"
+        spellcheck="false"
+        @input="error = ''"
+      />
+      <p v-if="error" class="error">{{ error }}</p>
+
+      <div class="actions">
+        <button type="submit" class="btn btn-primary" :disabled="!token || checking">
+          {{ checking ? 'Verifying…' : 'Save token' }}
+        </button>
+        <a class="btn btn-ghost" :href="GENERATE_URL" target="_blank" rel="noopener">
+          Generate a token <Icon name="external" :size="14" />
+        </a>
+      </div>
+
+      <button v-if="saved" type="button" class="remove" @click="onRemove">Remove saved token</button>
+    </form>
+  </section>
 </template>
 
-<script>
-import '@/assets/icons/css/icons.css'
+<script setup>
+import { ref } from 'vue'
+import { useRoute, useRouter } from 'vue-router'
+import Icon from './Icon.vue'
+import { getToken, setToken } from '../github/token'
+import { fetchRateLimit, GitHubError } from '../github/api/v3'
 
-export default {
-    name: 'Preferences',
-    data: () => {
-        return {
-            token: localStorage.token || '',
-        };
-    },
-    methods: {
-        onApplySettingsClick() {
-            if (this.token) {
-                localStorage.token = this.token;
-                this.$router.go(-1);
-            }
-            console.log(localStorage.token);
-        },
-    },
+const GENERATE_URL = 'https://github.com/settings/tokens/new?scopes=repo&description=stargazer'
+
+const route = useRoute()
+const router = useRouter()
+const token = ref(getToken())
+const saved = ref(Boolean(getToken()))
+const checking = ref(false)
+const error = ref('')
+
+async function onApply() {
+  checking.value = true
+  error.value = ''
+  try {
+    await fetchRateLimit(token.value)
+    setToken(token.value)
+    const redirect = route.query.redirect
+    router.replace(typeof redirect === 'string' && !redirect.startsWith('/settings') ? redirect : '/')
+  } catch (e) {
+    error.value = e instanceof GitHubError && e.status === 401
+      ? 'GitHub doesn’t recognise this token.'
+      : 'Couldn’t reach GitHub. Check your connection and try again.'
+  } finally {
+    checking.value = false
+  }
+}
+
+function onRemove() {
+  setToken('')
+  token.value = ''
+  saved.value = false
 }
 </script>
 
 <style scoped>
-.preferences-container {
-    position: absolute;
-    width: 100%;
-    height: 100%;
-    text-align: center;
-    background: rgb(54, 53, 52);
+.settings {
+  display: grid;
+  place-items: center;
+  min-height: calc(100vh - 64px);
+  padding-top: 32px;
+  padding-bottom: 64px;
 }
 
-.preferences-form {
-    width: 100%;
-    height: 60px;
-    position: absolute;
-    top: 50%;
-    margin-top: -30px;
-    line-height: 60px;
+.panel {
+  width: 100%;
+  max-width: 460px;
+  padding: 32px;
 }
 
-input {
-    outline: none;
-    border: 0px;
-    border-radius: 3px;
-    padding: 3px 8px;
-    line-height: 26px;
+.panel-icon {
+  display: grid;
+  place-items: center;
+  width: 44px;
+  height: 44px;
+  border-radius: 12px;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  margin-bottom: 20px;
 }
 
-input[type=text] {
-    color: rgb(15, 46, 71);
+h1 {
+  margin: 0 0 8px;
+  font-size: 22px;
+  font-weight: 650;
+  letter-spacing: -0.02em;
 }
 
-input[type=submit] {
-    color: white;
-    background-color: #28a745;
-    background-image: -webkit-gradient(linear,left top,left bottom,from(#34d058),color-stop(90%,#28a745));
-    background-image: linear-gradient(-180deg,#34d058,#28a745 90%);
+.lede {
+  margin: 0 0 24px;
+  color: var(--text-2);
+  text-wrap: pretty;
 }
 
-a.link-gen-token {
-    line-height: 26px;
-    margin-left: 8px;
+.notice {
+  margin: 0 0 20px;
+  padding: 10px 12px;
+  border-radius: 10px;
+  background: var(--danger-soft);
+  color: var(--danger);
+  font-size: 14px;
 }
 
-.icon-help-circled {
-    color: white;
+.label {
+  display: block;
+  margin-bottom: 6px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-2);
 }
 
-@media (max-width: 320px) {
-    input[type=text] {
-        width: 280px;
-    }
+.input {
+  width: 100%;
+  height: 42px;
+  padding: 0 12px;
+  border-radius: 10px;
+  border: 1px solid var(--border-strong);
+  background: var(--bg);
+  font-family: var(--mono);
+  font-size: 13px;
+  outline: none;
+  transition: border-color .15s, box-shadow .15s;
+}
+.input:focus { border-color: var(--accent); box-shadow: 0 0 0 4px var(--accent-soft); }
+.input.invalid { border-color: var(--danger); box-shadow: 0 0 0 4px var(--danger-soft); }
+
+.error { margin: 8px 0 0; font-size: 13px; color: var(--danger); }
+
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-top: 20px;
 }
 
-@media (min-width: 321px) and (max-width: 480px) {
-    input[type=text] {
-        width: 300px;
-    }
+.remove {
+  margin-top: 20px;
+  padding: 0;
+  border: 0;
+  background: none;
+  font-size: 13px;
+  color: var(--muted);
+  text-decoration: underline;
+  text-underline-offset: 3px;
+  cursor: pointer;
 }
+.remove:hover { color: var(--danger); }
 
-@media (min-width: 481px) and (max-width: 767px) {
-    input[type=text] {
-        width: 300px;
-    }
-}
-
-@media (min-width: 600px) {
-    input[type=text] {
-        width: 300px;
-        margin-right: 8px;
-    }
+@media (max-width: 479px) {
+  .panel { padding: 24px 20px; }
+  .actions .btn { flex: 1; }
 }
 </style>
