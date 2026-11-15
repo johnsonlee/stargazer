@@ -25,19 +25,31 @@ function nextBucket(start, granularity) {
   return new Date(d.getFullYear(), d.getMonth(), d.getDate() + (granularity === 'week' ? 7 : 1)).getTime()
 }
 
+/** One event per star, from `starred_at` timestamps. */
+export const starEvents = (starredAt) => starredAt.map((s) => ({ time: Date.parse(s), count: 1 }))
+
 /**
- * Buckets star timestamps into contiguous local-time periods from the repository's
- * creation (or its first star, whichever is earlier) up to `now`.
+ * Events from daily totals (`[{ date: 'YYYY-MM-DD', count }]`, UTC days). Each day is
+ * placed at local noon of the same calendar date, so it keeps its date in any time
+ * zone instead of sliding into the previous or next day.
+ */
+export const dailyEvents = (days) => days.map(({ date, count }) => {
+  const [y, m, d] = date.split('-').map(Number)
+  return { time: new Date(y, m - 1, d, 12).getTime(), count }
+})
+
+/**
+ * Buckets star events (`[{ time, count }]`) into contiguous local-time periods from the
+ * repository's creation (or its first star, whichever is earlier) up to `now`.
  * Returns `[{ start, added, total }]` where `total` is cumulative.
  */
-export function buildSeries(starredAt, createdAt, granularity, now = Date.now()) {
+export function buildSeries(events, createdAt, granularity, now = Date.now()) {
   const counts = new Map()
   let first = Date.parse(createdAt)
-  for (const s of starredAt) {
-    const t = Date.parse(s)
-    if (t < first) first = t
-    const key = bucketStart(t, granularity)
-    counts.set(key, (counts.get(key) || 0) + 1)
+  for (const { time, count } of events) {
+    if (time < first) first = time
+    const key = bucketStart(time, granularity)
+    counts.set(key, (counts.get(key) || 0) + count)
   }
 
   const points = []

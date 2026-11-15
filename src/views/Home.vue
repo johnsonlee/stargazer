@@ -1,5 +1,5 @@
 <template>
-  <section class="container page">
+  <section class="container container-wide page">
     <header class="repo-head">
       <div class="repo-title">
         <img v-if="meta" class="avatar" :src="avatar" alt="" width="40" height="40" />
@@ -26,85 +26,91 @@
       <button class="btn btn-ghost" @click="load(true)">Try again</button>
     </div>
 
-    <div v-else class="card overview">
-      <div class="overview-head">
-        <div class="hero-figure">
-          <span class="figure-label">Total stars</span>
-          <span class="hero-value">
-            <template v-if="meta">{{ formatNumber(meta.stargazers_count) }}</template>
-            <span v-else class="skeleton-num skeleton-hero"></span>
-          </span>
-          <span class="hero-delta">
-            <template v-if="stats">
-              <span :class="{ up: stats.latest.added > 0 }">+{{ formatNumber(stats.latest.added) }}</span> {{ granularity === 'day' ? 'today' : `this ${noun}` }} so far
-            </template>
-          </span>
-        </div>
-        <div class="chart-tools">
-          <div class="segmented" role="radiogroup" aria-label="Group by" :style="{ '--index': granularityIndex }">
-            <span class="segmented-thumb" aria-hidden="true"></span>
-            <button
-              v-for="g in GRANULARITIES"
-              :key="g.value"
-              type="button"
-              role="radio"
-              :aria-checked="g.value === granularity"
-              :class="{ active: g.value === granularity }"
-              @click="setGranularity(g.value)"
-            >
-              {{ g.label }}
+    <div v-else class="columns" :class="{ 'with-audience': !restricted }">
+      <div class="card overview">
+        <div class="overview-head">
+          <div class="hero-figure">
+            <span class="figure-label">Total stars</span>
+            <span class="hero-value">
+              <template v-if="meta">{{ formatNumber(meta.stargazers_count) }}</template>
+              <span v-else class="skeleton-num skeleton-hero"></span>
+            </span>
+            <span class="hero-delta">
+              <template v-if="stats">
+                <span :class="{ up: stats.latest.added > 0 }">+{{ formatNumber(stats.latest.added) }}</span> {{ granularity === 'day' ? 'today' : `this ${noun}` }} so far
+              </template>
+            </span>
+          </div>
+          <div class="chart-tools">
+            <div class="segmented" role="radiogroup" aria-label="Group by" :style="{ '--index': granularityIndex }">
+              <span class="segmented-thumb" aria-hidden="true"></span>
+              <button
+                v-for="g in GRANULARITIES"
+                :key="g.value"
+                type="button"
+                role="radio"
+                :aria-checked="g.value === granularity"
+                :class="{ active: g.value === granularity }"
+                @click="setGranularity(g.value)"
+              >
+                {{ g.label }}
+              </button>
+            </div>
+            <button class="icon-action" :disabled="!points.length" title="Download PNG" aria-label="Download chart as PNG" @click="chart?.download(`${owner}-${name}-stars-by-${granularity}`)">
+              <Icon name="download" :size="16" />
             </button>
           </div>
-          <button class="icon-action" :disabled="!points.length" title="Download PNG" aria-label="Download chart as PNG" @click="chart?.download(`${owner}-${name}-stars-by-${granularity}`)">
-            <Icon name="download" :size="16" />
-          </button>
         </div>
+
+        <dl class="figures">
+          <div class="figure">
+            <dt>Best {{ noun }}</dt>
+            <dd>
+              <template v-if="stats">+{{ formatNumber(stats.peak.added) }}</template>
+              <span v-else class="skeleton-num"></span>
+            </dd>
+            <dd class="figure-sub">{{ stats && stats.peak.added ? formatPeriod(stats.peak.start, granularity) : '' }}</dd>
+          </div>
+          <div class="figure">
+            <dt>Average per {{ noun }}</dt>
+            <dd>
+              <template v-if="stats">{{ stats.average }}</template>
+              <span v-else class="skeleton-num"></span>
+            </dd>
+            <dd class="figure-sub">{{ stats ? `across ${formatNumber(points.length)} ${noun}s` : '' }}</dd>
+          </div>
+          <div class="figure">
+            <dt>First star</dt>
+            <dd>
+              <template v-if="stats">{{ stats.firstStar ? formatDate(stats.firstStar) : '—' }}</template>
+              <span v-else class="skeleton-num"></span>
+            </dd>
+            <dd class="figure-sub">{{ meta ? `repository created ${formatDate(meta.created_at)}` : '' }}</dd>
+          </div>
+        </dl>
+
+        <div class="chart-area">
+          <div v-if="loading" class="chart-loading">
+            <div class="progress" :style="{ '--progress': progressRatio }"><span></span></div>
+            <p>{{ progressText }}</p>
+          </div>
+          <StarTrendingChart v-else-if="points.length" ref="chart" :points="points" :granularity="granularity" @range="range = $event" />
+        </div>
+
+        <p class="footnote">
+          <template v-if="restricted">
+            Days are UTC calendar days, grouped into weeks and months in your time zone, {{ timeZone }}; the latest {{ noun }} is still in progress.
+            GitHub shows who starred a repository only to its admins and collaborators, so there are no stargazer profiles to analyze here.
+          </template>
+          <template v-else>Times are in your time zone, {{ timeZone }}; the latest {{ noun }} is still in progress.</template>
+          <template v-if="truncated">
+            GitHub only lists the first {{ formatNumber(stars.length) }} stargazers, so the chart stops there; the total above is exact.
+          </template>
+        </p>
       </div>
 
-      <dl class="figures">
-        <div class="figure">
-          <dt>Best {{ noun }}</dt>
-          <dd>
-            <template v-if="stats">+{{ formatNumber(stats.peak.added) }}</template>
-            <span v-else class="skeleton-num"></span>
-          </dd>
-          <dd class="figure-sub">{{ stats && stats.peak.added ? formatPeriod(stats.peak.start, granularity) : '' }}</dd>
-        </div>
-        <div class="figure">
-          <dt>Average per {{ noun }}</dt>
-          <dd>
-            <template v-if="stats">{{ stats.average }}</template>
-            <span v-else class="skeleton-num"></span>
-          </dd>
-          <dd class="figure-sub">{{ stats ? `across ${formatNumber(points.length)} ${noun}s` : '' }}</dd>
-        </div>
-        <div class="figure">
-          <dt>First star</dt>
-          <dd>
-            <template v-if="stats">{{ stats.firstStar ? formatDate(stats.firstStar) : '—' }}</template>
-            <span v-else class="skeleton-num"></span>
-          </dd>
-          <dd class="figure-sub">{{ meta ? `repository created ${formatDate(meta.created_at)}` : '' }}</dd>
-        </div>
-      </dl>
-
-      <div class="chart-area">
-        <div v-if="loading" class="chart-loading">
-          <div class="progress" :style="{ '--progress': progressRatio }"><span></span></div>
-          <p>{{ progressText }}</p>
-        </div>
-        <StarTrendingChart v-else-if="points.length" ref="chart" :points="points" :granularity="granularity" />
-      </div>
-
-      <p class="footnote">
-        Times are in your time zone, {{ timeZone }}; the latest {{ noun }} is still in progress.
-        <template v-if="truncated">
-          GitHub only lists the first {{ formatNumber(stars.length) }} stargazers, so the chart stops there; the total above is exact.
-        </template>
-      </p>
+      <Audience v-if="!restricted" :repo="repo" :stargazers="stars" :range="range" @reset-range="chart?.resetZoom()" />
     </div>
-
-    <Audience v-if="!error && stars" :repo="repo" :stargazers="stars" />
   </section>
 </template>
 
@@ -113,10 +119,10 @@ import { computed, defineAsyncComponent, ref, shallowRef, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import Audience from '../components/Audience.vue'
 import Icon from '../components/Icon.vue'
-import { fetchRepository, fetchStargazers, GitHubError } from '../github/api/v3'
+import { fetchRepository, fetchStargazers, fetchStarHistory, GitHubError } from '../github/api/v3'
 import { getToken } from '../github/token'
 import {
-  GRANULARITIES, buildSeries, formatDate, formatNumber, formatPeriod, localTimeZone, parseGranularity,
+  GRANULARITIES, buildSeries, dailyEvents, formatDate, formatNumber, formatPeriod, localTimeZone, parseGranularity, starEvents,
 } from '../lib/series'
 
 // ECharts is the bulk of the bundle; load it only once a chart is shown.
@@ -139,9 +145,13 @@ const noun = computed(() => GRANULARITIES[granularityIndex.value].noun)
 
 const meta = shallowRef(null)
 const stars = shallowRef(null)
+// daily star totals, used instead of `stars` when GitHub won't list the stargazers
+const history = shallowRef(null)
 const error = ref(null)
 const progress = ref({ done: 0, total: 0 })
 const chart = ref(null)
+// the time range zoomed into on the chart, `null` for all time
+const range = shallowRef(null)
 let loadId = 0
 
 const avatar = computed(() => {
@@ -150,12 +160,19 @@ const avatar = computed(() => {
   return url.href
 })
 
-const loading = computed(() => !error.value && !stars.value)
+const loading = computed(() => !error.value && !stars.value && !history.value)
 
-const starredAt = computed(() => stars.value?.map((s) => s.starredAt) ?? [])
+// GitHub lists stargazers only to a repository's admins and collaborators; elsewhere
+// the chart is drawn from daily totals and there are no profiles to analyze.
+const restricted = computed(() => !!history.value)
 
-const points = computed(() => (meta.value && stars.value
-  ? buildSeries(starredAt.value, meta.value.created_at, granularity.value)
+const events = computed(() => {
+  if (stars.value) return starEvents(stars.value.map((s) => s.starredAt))
+  return history.value ? dailyEvents(history.value) : []
+})
+
+const points = computed(() => (meta.value && !loading.value
+  ? buildSeries(events.value, meta.value.created_at, granularity.value)
   : []))
 
 const stats = computed(() => {
@@ -164,7 +181,7 @@ const stats = computed(() => {
   const fetched = points.value.at(-1).total
   const average = fetched / points.value.length
   let firstStar = Infinity
-  for (const s of starredAt.value) firstStar = Math.min(firstStar, Date.parse(s))
+  for (const e of events.value) firstStar = Math.min(firstStar, e.time)
   return {
     firstStar: Number.isFinite(firstStar) ? firstStar : null,
     latest: points.value.at(-1),
@@ -180,9 +197,10 @@ const progressRatio = computed(() => (progress.value.total ? progress.value.done
 const progressText = computed(() => {
   if (!meta.value) return 'Looking up repository…'
   const { done, total } = progress.value
+  const what = progress.value.history ? 'star history' : 'stargazers'
   return total > 1
-    ? `Fetching stargazers · page ${formatNumber(done)} of ${formatNumber(total)}`
-    : 'Fetching stargazers…'
+    ? `Fetching ${what} · page ${formatNumber(done)} of ${formatNumber(total)}`
+    : `Fetching ${what}…`
 })
 
 function setGranularity(value) {
@@ -206,11 +224,13 @@ async function load(force = false) {
   const target = repo.value
   error.value = null
   progress.value = { done: 0, total: 0 }
+  range.value = null
   if (!target) return
 
   const cached = !force && cache.get(target.toLowerCase())
   meta.value = cached?.meta ?? null
   stars.value = cached?.stars ?? null
+  history.value = cached?.history ?? null
   if (cached) return
 
   const token = getToken()
@@ -218,12 +238,29 @@ async function load(force = false) {
     const repoMeta = await fetchRepository(target, token)
     if (id !== loadId) return
     meta.value = repoMeta
-    const stargazers = await fetchStargazers(target, token, (done, total) => {
-      if (id === loadId) progress.value = { done, total }
+    let stargazers = null
+    try {
+      stargazers = await fetchStargazers(target, token, (done, total) => {
+        if (id === loadId) progress.value = { done, total }
+      })
+    } catch (e) {
+      // the repository exists (its metadata loaded), so a 404 here means the token
+      // isn't an admin or collaborator; fall back to daily totals
+      if (!(e instanceof GitHubError && e.status === 404)) throw e
+    }
+    if (id !== loadId) return
+    if (stargazers) {
+      cache.set(target.toLowerCase(), { meta: repoMeta, stars: stargazers, history: null })
+      stars.value = stargazers
+      return
+    }
+    progress.value = { done: 0, total: 0, history: true }
+    const days = await fetchStarHistory(target, token, (done, total) => {
+      if (id === loadId) progress.value = { done, total, history: true }
     })
     if (id !== loadId) return
-    cache.set(target.toLowerCase(), { meta: repoMeta, stars: stargazers })
-    stars.value = stargazers
+    cache.set(target.toLowerCase(), { meta: repoMeta, stars: null, history: days })
+    history.value = days
   } catch (e) {
     if (id !== loadId) return
     if (e instanceof GitHubError && e.status === 401) {
@@ -293,8 +330,21 @@ watch(repo, () => load(), { immediate: true })
   white-space: nowrap;
 }
 
-/* overview card */
+/* Cards stack on narrow screens. On wide ones the audience card takes the right column
+   and its sign-ups/most-followed card sits under the trend; both stretch to the same
+   bottom edge, so the columns end flush whatever the data. */
+.columns { display: grid; gap: 16px; }
 .overview { overflow: hidden; }
+
+@media (min-width: 1280px) {
+  .columns.with-audience {
+    grid-template-columns: minmax(0, 1.2fr) minmax(0, 1fr);
+    grid-template-rows: auto 1fr;
+  }
+  .with-audience .overview { grid-area: 1 / 1; align-self: start; }
+  .columns > :deep(.audience) { grid-area: 1 / 2 / span 2; }
+  .columns > :deep(.audience-more) { grid-area: 2 / 1; }
+}
 
 .overview-head {
   display: flex;

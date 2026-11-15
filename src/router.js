@@ -19,6 +19,8 @@ const router = createRouter({
       path: '/:owner/:repo',
       name: 'home',
       component: Home,
+      // the trend and audience cards sit side by side on wide screens
+      meta: { wide: true },
     },
     {
       path: '/:pathMatch(.*)*',

@@ -87,6 +87,39 @@ const AGE_BUCKETS = [
   { label: '10+ years', below: Infinity },
 ]
 
+// Time since the account last pushed to a repository it owns.
+const PUSH_BUCKETS = [
+  { label: 'Within a month', below: MONTH },
+  { label: '1–12 months ago', below: YEAR },
+  { label: '1–3 years ago', below: 3 * YEAR },
+  { label: '3+ years ago', below: Infinity },
+]
+
+const CONTRIBUTION_BUCKETS = [
+  { label: 'None', below: 1 },
+  { label: '1–49', below: 50 },
+  { label: '50–199', below: 200 },
+  { label: '200–999', below: 1000 },
+  { label: '1k+', below: Infinity },
+]
+
+/** Accounts per sign-up year, from the earliest year in the sample to `until`, gaps included. */
+export function joinedByYear(profiles, until) {
+  const counts = new Map()
+  let first = new Date(until).getFullYear()
+  for (const p of profiles) {
+    const year = new Date(p.createdAt).getFullYear()
+    counts.set(year, (counts.get(year) || 0) + 1)
+    first = Math.min(first, year)
+  }
+  const years = []
+  for (let y = first; y <= new Date(until).getFullYear(); y++) years.push({ label: String(y), count: counts.get(y) || 0 })
+  return years
+}
+
+/** The `count` profiles with the most followers. */
+export const mostFollowed = (profiles, count = 12) => profiles.toSorted((a, b) => b.followers - a.followers).slice(0, count)
+
 function median(values) {
   if (!values.length) return 0
   const sorted = values.toSorted((a, b) => a - b)
@@ -98,7 +131,7 @@ function median(values) {
  * Summarizes stargazer profiles. `users` is `[{ starredAt, profile }]`; profiles of
  * deleted accounts are `null` and left out.
  */
-export function analyzeAudience(users) {
+export function analyzeAudience(users, now = Date.now()) {
   const people = users.filter((u) => u.profile)
   const profiles = people.map((u) => u.profile)
 
@@ -116,6 +149,7 @@ export function analyzeAudience(users) {
   // How old the account was when it starred the repository; new accounts are a fake-star signal.
   const ages = people.map((u) => Math.max(0, Date.parse(u.starredAt) - Date.parse(u.profile.createdAt)))
   const empty = profiles.filter((p) => p.followers === 0 && p.repositories === 0 && !p.bio?.trim()).length
+  const pushes = profiles.filter((p) => p.lastPushedAt).map((p) => Math.max(0, now - Date.parse(p.lastPushedAt)))
 
   return {
     size: profiles.length,
@@ -130,7 +164,25 @@ export function analyzeAudience(users) {
     companies,
     followers: histogram(followers, FOLLOWER_BUCKETS),
     ages: histogram(ages, AGE_BUCKETS),
+    joined: joinedByYear(profiles, now),
+    // accounts that own no repository have never pushed and are left out
+    pushed: pushes.length,
+    pushes: histogram(pushes, PUSH_BUCKETS),
     empty,
-    notable: profiles.toSorted((a, b) => b.followers - a.followers).slice(0, 12),
+    notable: mostFollowed(profiles),
+  }
+}
+
+/**
+ * Summarizes past-year contribution counts; `null` entries (deleted accounts, or
+ * counts GitHub couldn't compute) are left out.
+ */
+export function analyzeActivity(contributions) {
+  const known = contributions.filter((c) => c != null)
+  return {
+    size: known.length,
+    active: known.filter((c) => c > 0).length,
+    median: median(known),
+    contributions: histogram(known, CONTRIBUTION_BUCKETS),
   }
 }

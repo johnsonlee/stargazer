@@ -1,6 +1,6 @@
 <template>
   <header class="app-header">
-    <div class="container header-inner">
+    <div class="container header-inner" :class="{ 'container-wide': $route.meta.wide }">
       <RouterLink to="/" class="brand" aria-label="Stargazer home">
         <span class="brand-mark"><Icon name="star" :size="14" /></span>
         <span class="brand-name">Stargazer</span>
