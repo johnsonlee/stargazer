@@ -103,12 +103,15 @@
         </template>
       </p>
     </div>
+
+    <Audience v-if="!error && stars" :repo="repo" :stargazers="stars" />
   </section>
 </template>
 
 <script setup>
 import { computed, defineAsyncComponent, ref, shallowRef, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
+import Audience from '../components/Audience.vue'
 import Icon from '../components/Icon.vue'
 import { fetchRepository, fetchStargazers, GitHubError } from '../github/api/v3'
 import { getToken } from '../github/token'
@@ -149,8 +152,10 @@ const avatar = computed(() => {
 
 const loading = computed(() => !error.value && !stars.value)
 
+const starredAt = computed(() => stars.value?.map((s) => s.starredAt) ?? [])
+
 const points = computed(() => (meta.value && stars.value
-  ? buildSeries(stars.value, meta.value.created_at, granularity.value)
+  ? buildSeries(starredAt.value, meta.value.created_at, granularity.value)
   : []))
 
 const stats = computed(() => {
@@ -159,7 +164,7 @@ const stats = computed(() => {
   const fetched = points.value.at(-1).total
   const average = fetched / points.value.length
   let firstStar = Infinity
-  for (const s of stars.value) firstStar = Math.min(firstStar, Date.parse(s))
+  for (const s of starredAt.value) firstStar = Math.min(firstStar, Date.parse(s))
   return {
     firstStar: Number.isFinite(firstStar) ? firstStar : null,
     latest: points.value.at(-1),
@@ -213,12 +218,12 @@ async function load(force = false) {
     const repoMeta = await fetchRepository(target, token)
     if (id !== loadId) return
     meta.value = repoMeta
-    const starredAt = await fetchStargazers(target, token, (done, total) => {
+    const stargazers = await fetchStargazers(target, token, (done, total) => {
       if (id === loadId) progress.value = { done, total }
     })
     if (id !== loadId) return
-    cache.set(target.toLowerCase(), { meta: repoMeta, stars: starredAt })
-    stars.value = starredAt
+    cache.set(target.toLowerCase(), { meta: repoMeta, stars: stargazers })
+    stars.value = stargazers
   } catch (e) {
     if (id !== loadId) return
     if (e instanceof GitHubError && e.status === 401) {
