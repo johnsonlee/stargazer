@@ -1,6 +1,6 @@
 # stargazer
 
-Star history for any GitHub repository: cumulative stars plus new stars per day, week or month.
+Star history for any GitHub repository: cumulative stars plus new stars per day, week or month, and a profile of who starred it — countries, companies, followers, account age and the most-followed stargazers, from up to 1,000 public profiles sampled evenly across the star history.
 
 Live at <https://stargazer.johnsonlee.io>. Deep links look like `#/owner/repo?by=week` (`by` is `day` by default, or `week` / `month`).
 

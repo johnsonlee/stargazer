@@ -78,11 +78,11 @@ export async function fetchUserRepos(token) {
 }
 
 /**
- * Fetches the `starred_at` timestamp of every stargazer.
+ * Fetches every stargazer as `{ starredAt, id }`, where `id` is the user's GraphQL node ID.
  * `onProgress(done, total)` is called as pages arrive.
  */
 export async function fetchStargazers(repo, token, onProgress) {
   const url = (page) => `${API}/repos/${repo}/stargazers?per_page=${PER_PAGE}&page=${page}`
   const stargazers = await fetchAllPages(url, token, STAR_JSON, onProgress, MAX_PAGES)
-  return stargazers.map((it) => it.starred_at)
+  return stargazers.map((it) => ({ starredAt: it.starred_at, id: it.user?.node_id }))
 }
