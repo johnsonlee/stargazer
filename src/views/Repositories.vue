@@ -205,11 +205,16 @@ const pinned = computed(() => {
   return pins.value.map((name) => byName.get(name)).filter(Boolean)
 })
 
+// GitHub lists who starred a repository only to its admins and collaborators;
+// elsewhere only the star trend can be shown.
+const trendOnly = (repo) => repo.permissions && !repo.permissions.admin && !repo.permissions.push
+
 function metaOf(repo) {
   return [
     repo.language,
     repo.fork && 'Fork',
     repo.archived && 'Archived',
+    trendOnly(repo) && 'Trend only',
     relativeTime(repo.pushed_at || repo.updated_at),
   ].filter(Boolean)
 }

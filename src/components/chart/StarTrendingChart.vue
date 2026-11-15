@@ -187,8 +187,30 @@ function buildOption() {
   }
 }
 
+const emit = defineEmits(['range'])
+
+// The visible time range as `{ from, to }` (to exclusive), or `null` when the whole
+// history is shown, so other views can follow the zoom.
+function emitRange() {
+  const zoom = chart.getOption().dataZoom?.[0]
+  const last = props.points.length - 1
+  const first = Math.max(0, zoom?.startValue ?? 0)
+  const end = Math.min(last, zoom?.endValue ?? last)
+  emit('range', first <= 0 && end >= last ? null : {
+    from: props.points[first].start,
+    to: end >= last ? Date.now() : props.points[end + 1].start,
+  })
+}
+
 function render() {
-  if (chart) chart.setOption(buildOption(), { notMerge: true })
+  if (!chart) return
+  // a full redraw resets the zoom
+  chart.setOption(buildOption(), { notMerge: true })
+  emit('range', null)
+}
+
+function resetZoom() {
+  chart?.dispatchAction({ type: 'dataZoom', start: 0, end: 100 })
 }
 
 function download(filename) {
@@ -199,10 +221,11 @@ function download(filename) {
   a.click()
 }
 
-defineExpose({ download })
+defineExpose({ download, resetZoom })
 
 onMounted(() => {
   chart = init(el.value)
+  chart.on('datazoom', emitRange)
   render()
   resizeObserver = new ResizeObserver(() => {
     chart.resize()

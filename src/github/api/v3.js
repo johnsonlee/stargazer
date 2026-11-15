@@ -86,3 +86,21 @@ export async function fetchStargazers(repo, token, onProgress) {
   const stargazers = await fetchAllPages(url, token, STAR_JSON, onProgress, MAX_PAGES)
   return stargazers.map((it) => ({ starredAt: it.starred_at, id: it.user?.node_id }))
 }
+
+/**
+ * Fetches daily star counts as `[{ date: 'YYYY-MM-DD' (UTC), count }]`, days without
+ * stars left out. Unlike the stargazer list, which GitHub has shown only to a
+ * repository's admins and collaborators since June 2026, this works for any public
+ * repository, but it never says who starred. Pages hold 30 weeks each.
+ */
+export async function fetchStarHistory(repo, token, onProgress) {
+  const url = (page) => `${API}/repos/${repo}/stargazers/history?page=${page}`
+  const weeks = await fetchAllPages(url, token, undefined, onProgress)
+  const days = []
+  for (const { week, days: counts } of weeks) {
+    counts.forEach((count, i) => {
+      if (count) days.push({ date: new Date((week + i * 86400) * 1000).toISOString().slice(0, 10), count })
+    })
+  }
+  return days
+}

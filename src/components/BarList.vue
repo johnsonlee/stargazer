@@ -38,7 +38,9 @@ const tooltip = (row) => `${row.label}: ${formatNumber(row.count)} ${props.unit}
 </script>
 
 <style scoped>
-.bar-list { padding: 18px 24px 20px; min-width: 0; }
+/* Each list is its own container: rows switch to a stacked layout when the panel is
+   narrow, whether that's from a phone or from sitting beside another panel. */
+.bar-list { container-type: inline-size; padding: 18px 24px 20px; min-width: 0; }
 
 h3 { margin: 0; font-size: 13px; font-weight: 600; color: var(--text-2); }
 .note { margin: 1px 0 12px; font-size: 12px; color: var(--muted); }
@@ -47,9 +49,10 @@ ol { margin: 0; padding: 0; list-style: none; }
 
 li {
   display: grid;
-  grid-template-columns: minmax(0, 9rem) minmax(0, 1fr) 3.5em 3em;
+  grid-template-columns: minmax(0, 1fr) auto 3em;
+  grid-template-areas: "label value share" "track track track";
   align-items: center;
-  gap: 12px;
+  gap: 4px 10px;
   padding: 5px 8px;
   margin: 0 -8px;
   border-radius: 8px;
@@ -59,10 +62,10 @@ li {
 }
 li:hover { background: var(--surface-2); }
 
-.label { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.label { grid-area: label; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .other .label { color: var(--muted); }
 
-.track { height: 8px; }
+.track { grid-area: track; height: 6px; }
 .fill {
   display: block;
   min-width: 2px;
@@ -71,13 +74,23 @@ li:hover { background: var(--surface-2); }
   background: var(--accent);
 }
 
-.value { text-align: right; font-weight: 600; }
-.share { text-align: right; color: var(--muted); }
+.value { grid-area: value; text-align: right; font-weight: 600; }
+.share { grid-area: share; text-align: right; color: var(--muted); }
 
 .empty { margin: 0; font-size: 13px; color: var(--muted); }
 
-@media (max-width: 559px) {
+/* wide enough for label, bar and numbers on one line */
+@container (min-width: 400px) {
+  li {
+    grid-template-columns: minmax(0, 9rem) minmax(0, 1fr) 3.5em 3em;
+    grid-template-areas: "label track value share";
+    gap: 12px;
+  }
+  .track { height: 8px; }
+}
+
+/* the list's own padding follows the card's width (its nearest outer container) */
+@container (max-width: 519px) {
   .bar-list { padding: 16px 16px 18px; }
-  li { grid-template-columns: minmax(0, 7rem) minmax(0, 1fr) 3em 2.75em; gap: 10px; }
 }
 </style>

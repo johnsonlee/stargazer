@@ -79,6 +79,11 @@ button, input { font: inherit; color: inherit; }
   .container { padding: 0 28px; }
 }
 
+/* pages with side-by-side columns, and the header above them so the edges line up */
+@media (min-width: 1280px) {
+  .container-wide { max-width: 1680px; }
+}
+
 .card {
   background: var(--surface);
   border: 1px solid var(--border);
